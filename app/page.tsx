@@ -497,7 +497,7 @@ export default function HomePage() {
               rows={3}
               value={addressText}
               onChange={(event) => setAddressText(event.target.value)}
-              placeholder="410 Great Road B9 Unit 7-3, Littleton, MA 01460"
+              placeholder="123 Main St, City, ST 12345"
               data-testid="address-input"
             />
             <div style={{ marginTop: 8 }}>
