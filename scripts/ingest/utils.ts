@@ -81,7 +81,8 @@ export async function parseCsvStream(params: {
 }
 
 export function inferDelimiter(name: string) {
-  if (name.toLowerCase().endsWith('.tsv')) {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.tsv') || lower.endsWith('.txt')) {
     return '\t';
   }
   return ',';
