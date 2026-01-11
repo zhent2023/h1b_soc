@@ -1,0 +1,261 @@
+import type { PrismaClient } from '@prisma/client';
+
+import { cacheGet, cacheSet } from './cache';
+
+export interface AreaMeta {
+  areaCode: string;
+  areaName: string;
+  stateAb?: string | null;
+  areaType: string;
+}
+
+export interface WageLevel {
+  annual: number;
+  hourly: number;
+}
+
+export type SalaryUnit = 'year' | 'hour';
+
+export interface WageRateDTO {
+  area: AreaMeta;
+  socCode: string;
+  wageYear: string;
+  isAcwia: boolean;
+  level1: WageLevel;
+  level2: WageLevel;
+  level3: WageLevel;
+  level4: WageLevel;
+  hasDataQualityIssue: boolean;
+  dataQualityNotes?: Record<string, unknown> | null;
+}
+
+export interface AreaWageRow {
+  area: AreaMeta;
+  level1: WageLevel;
+  level2: WageLevel;
+  level3: WageLevel;
+  level4: WageLevel;
+}
+
+export function computeMetWageLevel(params: {
+  amount: number;
+  unit: SalaryUnit;
+  wage: WageRateDTO;
+}): { metLevel: 0 | 1 | 2 | 3 | 4; basis: 'annual' | 'hourly' | 'either'; notes: string[] } {
+  const { amount, unit, wage } = params;
+  const levels = [wage.level1, wage.level2, wage.level3, wage.level4];
+  const epsilon = 0.01;
+  const annualAmount = unit === 'year' ? amount : amount * 2080;
+  const hourlyAmount = unit === 'hour' ? amount : amount / 2080;
+
+  const meets = (value: number, threshold: number) => value + epsilon >= threshold;
+
+  let annualMet: 0 | 1 | 2 | 3 | 4 = 0;
+  let hourlyMet: 0 | 1 | 2 | 3 | 4 = 0;
+
+  levels.forEach((level, idx) => {
+    const nextLevel = (idx + 1) as 1 | 2 | 3 | 4;
+    if (meets(annualAmount, level.annual)) {
+      annualMet = nextLevel;
+    }
+    if (meets(hourlyAmount, level.hourly)) {
+      hourlyMet = nextLevel;
+    }
+  });
+
+  const metLevel = (Math.max(annualMet, hourlyMet) as 0 | 1 | 2 | 3 | 4) ?? 0;
+  let basis: 'annual' | 'hourly' | 'either' = 'either';
+  if (annualMet > hourlyMet) {
+    basis = 'annual';
+  } else if (hourlyMet > annualMet) {
+    basis = 'hourly';
+  }
+
+  const notes: string[] = [];
+  if (annualMet !== hourlyMet) {
+    notes.push(
+      unit === 'year'
+        ? 'Hourly comparison uses 2080 hours/year conversion.'
+        : 'Annual comparison uses 2080 hours/year conversion.',
+    );
+    notes.push(`Annual level=${annualMet}, hourly level=${hourlyMet}.`);
+  }
+
+  return { metLevel, basis, notes };
+}
+
+function mapArea(area: { areaCode: string; areaName: string; stateAb?: string | null }): AreaMeta {
+  return {
+    areaCode: area.areaCode,
+    areaName: area.areaName,
+    stateAb: area.stateAb ?? null,
+    areaType: 'oflc',
+  };
+}
+
+function buildLevels(params: {
+  l1Annual: number;
+  l1Hourly: number | null;
+  l2Annual: number | null;
+  l2Hourly: number | null;
+  l3Annual: number | null;
+  l3Hourly: number | null;
+  l4Annual: number | null;
+  l4Hourly: number | null;
+}) {
+  const baseHourly = params.l1Hourly ?? Math.round(params.l1Annual / 2080);
+  const level1 = { annual: params.l1Annual, hourly: params.l1Hourly ?? baseHourly };
+  const level2 = {
+    annual: params.l2Annual ?? params.l1Annual + 15000,
+    hourly: params.l2Hourly ?? baseHourly + 8,
+  };
+  const level3 = {
+    annual: params.l3Annual ?? params.l1Annual + 30000,
+    hourly: params.l3Hourly ?? baseHourly + 16,
+  };
+  const level4 = {
+    annual: params.l4Annual ?? params.l1Annual + 45000,
+    hourly: params.l4Hourly ?? baseHourly + 24,
+  };
+
+  return { level1, level2, level3, level4 };
+}
+
+export async function getWageRate(params: {
+  prisma: PrismaClient;
+  datasetVersionId: string;
+  wageYear: string;
+  isAcwia: boolean;
+  areaCode: string;
+  socCode: string;
+}): Promise<WageRateDTO | null> {
+  const { prisma, datasetVersionId, wageYear, isAcwia, areaCode, socCode } = params;
+  const cacheKey = `wage:${datasetVersionId}:${wageYear}:${isAcwia}:${areaCode}:${socCode}`;
+  const cached = await cacheGet<WageRateDTO | null>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const record = await prisma.wageRate.findFirst({
+    where: {
+      datasetVersionId,
+      wageYear,
+      isAcwia,
+      areaCode,
+      socCode,
+    },
+    include: {
+      area: true,
+    },
+  });
+
+  if (!record) {
+    await cacheSet(cacheKey, null, 3600);
+    return null;
+  }
+
+  const levels = buildLevels({
+    l1Annual: record.l1Annual,
+    l1Hourly: record.l1Hourly ?? null,
+    l2Annual: record.l2Annual ?? null,
+    l2Hourly: record.l2Hourly ?? null,
+    l3Annual: record.l3Annual ?? null,
+    l3Hourly: record.l3Hourly ?? null,
+    l4Annual: record.l4Annual ?? null,
+    l4Hourly: record.l4Hourly ?? null,
+  });
+
+  const result: WageRateDTO = {
+    area: mapArea(record.area),
+    socCode: record.socCode,
+    wageYear: record.wageYear,
+    isAcwia: record.isAcwia,
+    ...levels,
+    hasDataQualityIssue: record.hasDataQualityIssue,
+    dataQualityNotes: record.dataQualityNotes ?? null,
+  };
+  await cacheSet(cacheKey, result, 3600);
+  return result;
+}
+
+export async function getSocExtremes(params: {
+  prisma: PrismaClient;
+  datasetVersionId: string;
+  wageYear: string;
+  isAcwia: boolean;
+  socCode: string;
+  metric: 'l1Annual';
+  n: number;
+}): Promise<{ lowest: AreaWageRow[]; highest: AreaWageRow[] }> {
+  const { prisma, datasetVersionId, wageYear, isAcwia, socCode, n } = params;
+  const cacheKey = `extremes:${datasetVersionId}:${wageYear}:${isAcwia}:${socCode}:${n}`;
+  const cached = await cacheGet<{ lowest: AreaWageRow[]; highest: AreaWageRow[] }>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const lowest = await prisma.wageRate.findMany({
+    where: {
+      datasetVersionId,
+      wageYear,
+      isAcwia,
+      socCode,
+    },
+    include: {
+      area: true,
+    },
+    orderBy: [{ l1Annual: 'asc' }, { areaCode: 'asc' }],
+    take: n,
+  });
+
+  const highest = await prisma.wageRate.findMany({
+    where: {
+      datasetVersionId,
+      wageYear,
+      isAcwia,
+      socCode,
+    },
+    include: {
+      area: true,
+    },
+    orderBy: [{ l1Annual: 'desc' }, { areaCode: 'asc' }],
+    take: n,
+  });
+
+  const result = {
+    lowest: lowest.map((row) => {
+      const levels = buildLevels({
+        l1Annual: row.l1Annual,
+        l1Hourly: row.l1Hourly ?? null,
+        l2Annual: row.l2Annual ?? null,
+        l2Hourly: row.l2Hourly ?? null,
+        l3Annual: row.l3Annual ?? null,
+        l3Hourly: row.l3Hourly ?? null,
+        l4Annual: row.l4Annual ?? null,
+        l4Hourly: row.l4Hourly ?? null,
+      });
+      return {
+        area: mapArea(row.area),
+        ...levels,
+      };
+    }),
+    highest: highest.map((row) => {
+      const levels = buildLevels({
+        l1Annual: row.l1Annual,
+        l1Hourly: row.l1Hourly ?? null,
+        l2Annual: row.l2Annual ?? null,
+        l2Hourly: row.l2Hourly ?? null,
+        l3Annual: row.l3Annual ?? null,
+        l3Hourly: row.l3Hourly ?? null,
+        l4Annual: row.l4Annual ?? null,
+        l4Hourly: row.l4Hourly ?? null,
+      });
+      return {
+        area: mapArea(row.area),
+        ...levels,
+      };
+    }),
+  };
+  await cacheSet(cacheKey, result, 3600);
+  return result;
+}

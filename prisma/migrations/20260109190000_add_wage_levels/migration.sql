@@ -1,0 +1,8 @@
+-- Add wage levels 2-4
+ALTER TABLE "WageRate"
+  ADD COLUMN "l2Annual" INTEGER,
+  ADD COLUMN "l2Hourly" INTEGER,
+  ADD COLUMN "l3Annual" INTEGER,
+  ADD COLUMN "l3Hourly" INTEGER,
+  ADD COLUMN "l4Annual" INTEGER,
+  ADD COLUMN "l4Hourly" INTEGER;

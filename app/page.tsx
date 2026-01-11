@@ -1,0 +1,653 @@
+"use client";
+
+import { useEffect, useMemo, useState } from 'react';
+
+import { parseFullAddress, type ParsedAddress } from '../src/lib/address';
+
+type Mode = 'address' | 'address_soc' | 'soc';
+const confirmationStorageKey = 'lookupConfirmation';
+
+export default function HomePage() {
+  const [mode, setMode] = useState<Mode>('address');
+  const [addressText, setAddressText] = useState('');
+  const [addressDetails, setAddressDetails] = useState<ParsedAddress | null>(null);
+  const [showAddressDetails, setShowAddressDetails] = useState(false);
+  const [socCode, setSocCode] = useState('');
+  const [salaryAmount, setSalaryAmount] = useState('');
+  const [salaryUnit, setSalaryUnit] = useState<'year' | 'hour'>('year');
+  const [email, setEmail] = useState('');
+  const [accessKey, setAccessKey] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [response, setResponse] = useState<any>(null);
+  const [lastRequest, setLastRequest] = useState<any>(null);
+  const [candidateQuery, setCandidateQuery] = useState('');
+  const [candidateResults, setCandidateResults] = useState<any[]>([]);
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [candidateError, setCandidateError] = useState('');
+
+  const parsedAddress = useMemo(
+    () => (addressText.trim() ? parseFullAddress(addressText) : null),
+    [addressText],
+  );
+
+  useEffect(() => {
+    setEmail(localStorage.getItem('accessEmail') ?? '');
+    setAccessKey(localStorage.getItem('accessKey') ?? '');
+  }, []);
+
+  useEffect(() => {
+    if (!parsedAddress) {
+      setAddressDetails(null);
+      return;
+    }
+    setAddressDetails(parsedAddress);
+    if (parsedAddress.confidence !== 'high') {
+      setShowAddressDetails(true);
+    }
+  }, [parsedAddress]);
+
+  useEffect(() => {
+    if (!response || response.kind !== 'geo_needs_confirmation') {
+      setCandidateResults([]);
+      setCandidateQuery('');
+      setCandidateError('');
+    }
+  }, [response]);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem(confirmationStorageKey);
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as { ts: number; lastRequest?: any; response?: any };
+      if (!saved?.ts || Date.now() - saved.ts > 60 * 60 * 1000) {
+        sessionStorage.removeItem(confirmationStorageKey);
+        return;
+      }
+
+      if (saved.lastRequest) {
+        setLastRequest(saved.lastRequest);
+        setResponse(saved.response ?? null);
+        setAddressText(saved.lastRequest.address?.fullText ?? '');
+        setSocCode(saved.lastRequest.socCode ?? '');
+        if (saved.lastRequest.proposedSalary !== undefined) {
+          setSalaryAmount(String(saved.lastRequest.proposedSalary));
+        }
+        if (saved.lastRequest.salaryUnit === 'hour' || saved.lastRequest.salaryUnit === 'year') {
+          setSalaryUnit(saved.lastRequest.salaryUnit);
+        }
+        if (saved.lastRequest.address && saved.lastRequest.socCode) {
+          setMode('address_soc');
+        } else if (saved.lastRequest.address) {
+          setMode('address');
+        } else if (saved.lastRequest.socCode) {
+          setMode('soc');
+        }
+      }
+    } catch {
+      sessionStorage.removeItem(confirmationStorageKey);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (response?.kind === 'geo_needs_confirmation' && lastRequest) {
+      sessionStorage.setItem(
+        confirmationStorageKey,
+        JSON.stringify({ ts: Date.now(), lastRequest, response }),
+      );
+    } else if (response) {
+      sessionStorage.removeItem(confirmationStorageKey);
+    }
+  }, [response, lastRequest]);
+
+  const updateStoredCredentials = () => {
+    localStorage.setItem('accessEmail', email.trim());
+    localStorage.setItem('accessKey', accessKey.trim());
+  };
+
+  const buildRequestBody = (override?: { areaCode?: string }) => {
+    const body: any = {};
+    if (mode === 'address' || mode === 'address_soc') {
+      const trimmed = addressText.trim();
+      if (trimmed) {
+        const parsed = addressDetails ?? parseFullAddress(trimmed);
+        const line1 = parsed.line2 ? `${parsed.line1} ${parsed.line2}`.trim() : parsed.line1;
+        body.address = {
+          fullText: trimmed,
+          line1: line1 || undefined,
+          city: parsed.city || undefined,
+          state: parsed.state || undefined,
+          zip: parsed.zip || undefined,
+        };
+      } else {
+        body.address = { fullText: trimmed };
+      }
+    }
+    if (mode === 'address_soc' || mode === 'soc') {
+      body.socCode = socCode.trim();
+    }
+    if (mode === 'address_soc' && salaryAmount.trim()) {
+      const parsedSalary = Number(salaryAmount);
+      if (Number.isFinite(parsedSalary)) {
+        body.proposedSalary = parsedSalary;
+        body.salaryUnit = salaryUnit;
+      }
+    }
+    if (override?.areaCode) {
+      body.override = { areaCode: override.areaCode };
+    }
+    return body;
+  };
+
+  const runLookup = async (override?: { areaCode?: string }) => {
+    setLoading(true);
+    setError('');
+    updateStoredCredentials();
+    const body = buildRequestBody(override);
+    setLastRequest(body);
+
+    try {
+      const res = await fetch('/api/v1/lookup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(email ? { 'x-access-email': email } : {}),
+          ...(accessKey ? { 'x-access-key': accessKey } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? 'Request failed.');
+      }
+      setResponse(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      setResponse(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendWithOverride = (areaCode: string) => {
+    const base = lastRequest ?? buildRequestBody();
+    runLookup({ areaCode });
+    setLastRequest({ ...base, override: { areaCode } });
+  };
+
+  const updateAddressDetail = (field: keyof ParsedAddress, value: string) => {
+    setAddressDetails((prev) =>
+      prev
+        ? {
+            ...prev,
+            [field]: value,
+          }
+        : prev,
+    );
+    setShowAddressDetails(true);
+  };
+
+  const runCandidateSearch = async () => {
+    const geoState = response?.geo?.geocode?.stateAb;
+    const fallbackStateMatch = addressText.match(/\b([A-Za-z]{2})\s*\d{5}\b/);
+    const fallbackState = fallbackStateMatch ? fallbackStateMatch[1].toUpperCase() : null;
+    const stateAb =
+      (geoState && geoState !== 'NA' ? geoState : null) ||
+      addressDetails?.state ||
+      parsedAddress?.state ||
+      fallbackState;
+    if (!stateAb) {
+      setCandidateError('State is required to search candidates.');
+      return;
+    }
+
+    setCandidateLoading(true);
+    setCandidateError('');
+    try {
+      const url = new URL('/api/v1/geo/candidates', window.location.origin);
+      url.searchParams.set('state', stateAb);
+      if (candidateQuery.trim()) {
+        url.searchParams.set('q', candidateQuery.trim());
+      }
+      const res = await fetch(url.toString(), {
+        headers: {
+          ...(email ? { 'x-access-email': email } : {}),
+          ...(accessKey ? { 'x-access-key': accessKey } : {}),
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? 'Candidate search failed.');
+      }
+      setCandidateResults(data.items ?? []);
+    } catch (err) {
+      setCandidateError(err instanceof Error ? err.message : 'Candidate search failed.');
+      setCandidateResults([]);
+    } finally {
+      setCandidateLoading(false);
+    }
+  };
+
+  const renderResults = () => {
+    if (!response) return null;
+
+    return (
+      <div style={{ marginTop: 24 }} data-testid="results">
+        <h2>Results</h2>
+        <p data-testid="result-kind">Kind: {response.kind}</p>
+        {response.warnings?.length ? (
+          <div style={{ color: '#b45309' }} data-testid="warnings">
+            Warnings: {response.warnings.join('; ')}
+          </div>
+        ) : null}
+
+        {response.explain?.summary?.length ? (
+          <div style={{ marginTop: 12 }}>
+            <h3>Explain</h3>
+            <ul data-testid="explain-list">
+              {response.explain.summary.map((entry: string, idx: number) => (
+                <li key={`${entry}-${idx}`}>{entry}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {response.geo?.geocode ? (
+          <div style={{ marginTop: 12 }}>
+            {response.geo.geocode.placeName ? (
+              <div data-testid="geo-place">Place: {response.geo.geocode.placeName}</div>
+            ) : null}
+            {response.geo.geocode.countyName ? (
+              <div data-testid="geo-county">County: {response.geo.geocode.countyName}</div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {response.geo?.area ? (
+          <div>
+            <strong>Area:</strong>{' '}
+            <span data-testid="area-name">{response.geo.area.areaName}</span> (
+            <span data-testid="area-code">{response.geo.area.areaCode}</span>)
+          </div>
+        ) : null}
+
+        {response.geo?.cbsa ? (
+          <div style={{ marginTop: 8 }} data-testid="cbsa">
+            <div>
+              CBSA: {response.geo.cbsa.cbsaName} ({response.geo.cbsa.cbsaCode})
+            </div>
+            {response.geo.cbsa.isCrossState ? (
+              <div style={{ color: '#1f2937' }} data-testid="cbsa-cross">
+                Cross-State MSA: {response.geo.cbsa.statesInMsa.join(', ')}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {response.wages?.level1 ? (
+          <div style={{ marginTop: 12 }}>
+            <h3>Wage</h3>
+            {response.featureFlags?.wageQualityBanner && response.wages.dataQuality ? (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: 8,
+                  borderRadius: 6,
+                  background: '#fef3c7',
+                  color: '#92400e',
+                }}
+                data-testid="wage-quality-banner"
+              >
+                Wage data quality flag detected.
+                {response.wages.dataQuality.notes?.length ? (
+                  <ul style={{ marginTop: 6 }}>
+                    {response.wages.dataQuality.notes.map((note: string, idx: number) => (
+                      <li key={`${note}-${idx}`}>{note}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+            {response.wages.proposedSalary ? (
+              <div data-testid="proposed-salary">
+                Proposed: {response.wages.proposedSalary.amount} /{' '}
+                {response.wages.proposedSalary.unit}
+              </div>
+            ) : null}
+            <div data-testid="wage-l1-annual">L1 Annual: {response.wages.level1.annual}</div>
+            <div data-testid="wage-l1-hourly">L1 Hourly: {response.wages.level1.hourly}</div>
+            <div data-testid="wage-l2-annual">L2 Annual: {response.wages.level2?.annual}</div>
+            <div data-testid="wage-l2-hourly">L2 Hourly: {response.wages.level2?.hourly}</div>
+            <div data-testid="wage-l3-annual">L3 Annual: {response.wages.level3?.annual}</div>
+            <div data-testid="wage-l3-hourly">L3 Hourly: {response.wages.level3?.hourly}</div>
+            <div data-testid="wage-l4-annual">L4 Annual: {response.wages.level4?.annual}</div>
+            <div data-testid="wage-l4-hourly">L4 Hourly: {response.wages.level4?.hourly}</div>
+            {response.wages.metWageLevel ? (
+              <div style={{ marginTop: 8 }} data-testid="met-wage-level">
+                Met Level: {response.wages.metWageLevel.metLevel} (
+                {response.wages.metWageLevel.basis})
+                {response.wages.metWageLevel.notes?.length ? (
+                  <ul>
+                    {response.wages.metWageLevel.notes.map((note: string, idx: number) => (
+                      <li key={`${note}-${idx}`}>{note}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {response.duties?.duties?.length ? (
+          <div style={{ marginTop: 12 }}>
+            <h3>Duties</h3>
+            <ul data-testid="duties-list">
+              {response.duties.duties.map((duty: any, idx: number) => (
+                <li key={`${duty.text}-${idx}`}>{duty.text}</li>
+              ))}
+            </ul>
+          </div>
+        ) : response.duties?.note ? (
+          <div style={{ marginTop: 12 }} data-testid="duties-note">
+            {response.duties.note}
+          </div>
+        ) : null}
+
+        {response.extremes ? (
+          <div style={{ marginTop: 12 }}>
+            <h3>Extremes</h3>
+            <div>
+              <strong>Lowest</strong>
+              <ul data-testid="extremes-lowest">
+                {response.extremes.lowest.map((row: any) => (
+                  <li key={`low-${row.area.areaCode}`}>
+                    {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <strong>Highest</strong>
+              <ul data-testid="extremes-highest">
+                {response.extremes.highest.map((row: any) => (
+                  <li key={`high-${row.area.areaCode}`}>
+                    {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : null}
+
+        {response.kind === 'geo_needs_confirmation' && response.confirmation?.suggestions ? (
+          <div style={{ marginTop: 12 }}>
+            <h3>Confirmation Needed</h3>
+            <ul data-testid="confirmation-list">
+              {response.confirmation.suggestions.map((entry: any) => (
+                <li key={`${entry.areaCode}-${entry.countyFips}`}>
+                  {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
+                  <button
+                    style={{ marginLeft: 8 }}
+                    type="button"
+                    onClick={() => resendWithOverride(entry.areaCode)}
+                  >
+                    Use
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div style={{ marginTop: 12 }}>
+              <label>
+                Search candidates
+                <input
+                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+                  value={candidateQuery}
+                  onChange={(event) => setCandidateQuery(event.target.value)}
+                  placeholder="Middlesex"
+                  data-testid="candidate-search-input"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => runCandidateSearch()}
+                disabled={candidateLoading}
+                style={{ marginTop: 8 }}
+                data-testid="candidate-search-button"
+              >
+                {candidateLoading ? 'Searching...' : 'Search'}
+              </button>
+              {candidateError ? (
+                <div style={{ color: '#b91c1c', marginTop: 8 }} data-testid="candidate-error">
+                  {candidateError}
+                </div>
+              ) : null}
+              {candidateResults.length ? (
+                <ul style={{ marginTop: 8 }} data-testid="candidate-results">
+                  {candidateResults.map((entry) => (
+                    <li key={`${entry.areaCode}-${entry.countyFips}`}>
+                      {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
+                      <button
+                        style={{ marginLeft: 8 }}
+                        type="button"
+                        onClick={() => resendWithOverride(entry.areaCode)}
+                      >
+                        Use
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <main style={{ maxWidth: 880, margin: '32px auto', padding: '0 16px' }}>
+      <h1>H1B SOC</h1>
+      <p>Query wage and SOC data with address and SOC inputs.</p>
+
+      <section style={{ border: '1px solid #ddd', padding: 16, borderRadius: 8 }}>
+        <h2>Credentials</h2>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <label>
+            Email
+            <input
+              style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
+          <label>
+            Access Key
+            <input
+              style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+              type="password"
+              value={accessKey}
+              onChange={(event) => setAccessKey(event.target.value)}
+            />
+          </label>
+        </div>
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button type="button" onClick={() => setMode('address')} data-testid="mode-address">
+            Address Only
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('address_soc')}
+            data-testid="mode-address-soc"
+          >
+            Address + SOC
+          </button>
+          <button type="button" onClick={() => setMode('soc')} data-testid="mode-soc">
+            SOC Only
+          </button>
+        </div>
+
+        {(mode === 'address' || mode === 'address_soc') && (
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            Address
+            <textarea
+              style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+              rows={3}
+              value={addressText}
+              onChange={(event) => setAddressText(event.target.value)}
+              placeholder="410 Great Road B9 Unit 7-3, Littleton, MA 01460"
+              data-testid="address-input"
+            />
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => setShowAddressDetails((prev) => !prev)}
+                data-testid="address-details-toggle"
+              >
+                {showAddressDetails ? 'Hide address details' : 'Edit address details'}
+              </button>
+            </div>
+          </label>
+        )}
+
+        {showAddressDetails && addressDetails ? (
+          <div
+            style={{ border: '1px dashed #ccc', padding: 12, marginBottom: 12 }}
+            data-testid="address-details"
+          >
+            <div style={{ marginBottom: 8 }} data-testid="address-confidence">
+              Parsed confidence: {addressDetails.confidence}
+            </div>
+            {addressDetails.warnings.length ? (
+              <div style={{ color: '#b45309', marginBottom: 8 }} data-testid="address-warnings">
+                {addressDetails.warnings.join('; ')}
+              </div>
+            ) : null}
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label>
+                Line 1
+                <input
+                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+                  value={addressDetails.line1}
+                  onChange={(event) => updateAddressDetail('line1', event.target.value)}
+                  data-testid="address-line1"
+                />
+              </label>
+              <label>
+                Line 2
+                <input
+                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+                  value={addressDetails.line2 ?? ''}
+                  onChange={(event) => updateAddressDetail('line2', event.target.value)}
+                  data-testid="address-line2"
+                />
+              </label>
+              <label>
+                City
+                <input
+                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+                  value={addressDetails.city}
+                  onChange={(event) => updateAddressDetail('city', event.target.value)}
+                  data-testid="address-city"
+                />
+              </label>
+              <label>
+                State
+                <input
+                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+                  value={addressDetails.state}
+                  onChange={(event) => updateAddressDetail('state', event.target.value)}
+                  data-testid="address-state"
+                />
+              </label>
+              <label>
+                ZIP
+                <input
+                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+                  value={addressDetails.zip ?? ''}
+                  onChange={(event) => updateAddressDetail('zip', event.target.value)}
+                  data-testid="address-zip"
+                />
+              </label>
+            </div>
+          </div>
+        ) : null}
+
+        {(mode === 'soc' || mode === 'address_soc') && (
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            SOC Code
+            <input
+              style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+              value={socCode}
+              onChange={(event) => setSocCode(event.target.value)}
+              placeholder="15-1252"
+              data-testid="soc-input"
+            />
+            <div style={{ marginTop: 6, fontSize: 12, color: '#555' }} data-testid="soc-help">
+              Formats: 15-1252 (SOC-6) or 15-1252.01 (O*NET 8-digit). .00 is broad; .01+ is
+              detailed. Wages use SOC-6; duties use O*NET 8-digit with fallback.
+            </div>
+          </label>
+        )}
+
+        {mode === 'address_soc' && (
+          <div style={{ display: 'grid', gap: 12, marginBottom: 12 }}>
+            <label>
+              Proposed Salary
+              <input
+                style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+                type="number"
+                value={salaryAmount}
+                onChange={(event) => setSalaryAmount(event.target.value)}
+                placeholder="120000"
+                data-testid="salary-input"
+              />
+            </label>
+            <label>
+              Salary Unit
+              <select
+                style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+                value={salaryUnit}
+                onChange={(event) =>
+                  setSalaryUnit(event.target.value === 'hour' ? 'hour' : 'year')
+                }
+                data-testid="salary-unit"
+              >
+                <option value="year">Year</option>
+                <option value="hour">Hour</option>
+              </select>
+            </label>
+            {salaryUnit === 'year' &&
+            salaryAmount.trim() &&
+            Number.isFinite(Number(salaryAmount)) &&
+            Number(salaryAmount) < 1000 ? (
+              <div style={{ color: '#b45309' }} data-testid="salary-warning">
+                Salary looks low for annual input. Did you mean hourly?
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => runLookup()}
+          disabled={loading}
+          data-testid="lookup-button"
+        >
+          {loading ? 'Loading...' : 'Lookup'}
+        </button>
+
+        {error ? <div style={{ color: '#b91c1c', marginTop: 12 }}>{error}</div> : null}
+      </section>
+
+      {renderResults()}
+
+      <section style={{ marginTop: 32, color: '#444' }}>
+        <strong>Disclaimer:</strong> Verify against official OFLC and O*NET sources. Not legal
+        advice.
+      </section>
+    </main>
+  );
+}

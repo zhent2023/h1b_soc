@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model DatasetVersion {
+  id           String   @id @default(uuid()) @db.Uuid
+  datasetName  String
+  versionLabel String
+  isActive     Boolean  @default(true)
+  metaJson     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  oflcAreas         OflcArea[]
+  oflcAreaCounties  OflcAreaCounty[]
+  wageRates         WageRate[]
+  socTitles         SocTitle[]
+  onetSocMaps       OnetSocMap[]
+  onetDuties        OnetDuty[]
+  geoCounties       GeoCounty[]
+  geoCountyToCbsas  GeoCountyToCbsa[]
+  geoCbsas          GeoCbsa[]
+
+  @@index([datasetName])
+}
+
+model AccessUser {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String
+  keyHash   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([email])
+  @@index([isActive])
+}
+
+model OflcArea {
+  id               String   @id @default(uuid()) @db.Uuid
+  datasetVersionId String   @db.Uuid
+  areaCode         String
+  areaName         String
+  stateAb          String?
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+  counties       OflcAreaCounty[]
+  wageRates      WageRate[]
+
+  @@unique([datasetVersionId, areaCode])
+  @@index([datasetVersionId, areaName])
+}
+
+model OflcAreaCounty {
+  id                 String @id @default(uuid()) @db.Uuid
+  datasetVersionId   String @db.Uuid
+  areaCode           String
+  countyFips         String
+  stateAb            String
+  countyTownName     String
+  countyTownNameNorm String
+  matchKind          String
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+  area           OflcArea       @relation(fields: [datasetVersionId, areaCode], references: [datasetVersionId, areaCode], onDelete: Cascade)
+
+  @@index([datasetVersionId, countyFips])
+  @@index([datasetVersionId, stateAb, countyTownNameNorm, matchKind])
+}
+
+model WageRate {
+  id                   String  @id @default(uuid()) @db.Uuid
+  datasetVersionId     String  @db.Uuid
+  wageYear             String
+  isAcwia              Boolean @default(false)
+  areaCode             String
+  socCode              String
+  l1Annual             Int
+  l1Hourly             Int?
+  l2Annual             Int?
+  l2Hourly             Int?
+  l3Annual             Int?
+  l3Hourly             Int?
+  l4Annual             Int?
+  l4Hourly             Int?
+  hasDataQualityIssue  Boolean @default(false)
+  dataQualityNotes     Json?
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+  area           OflcArea       @relation(fields: [datasetVersionId, areaCode], references: [datasetVersionId, areaCode], onDelete: Cascade)
+  socTitle       SocTitle?      @relation(fields: [datasetVersionId, socCode], references: [datasetVersionId, socCode], onDelete: Cascade)
+
+  @@unique([datasetVersionId, wageYear, isAcwia, areaCode, socCode])
+  @@index([datasetVersionId, wageYear, isAcwia, socCode, l1Annual])
+}
+
+model SocTitle {
+  id               String   @id @default(uuid()) @db.Uuid
+  datasetVersionId String   @db.Uuid
+  socCode          String
+  title            String
+  createdAt        DateTime @default(now())
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+  wageRates      WageRate[]
+  onetSocMaps    OnetSocMap[]
+
+  @@unique([datasetVersionId, socCode])
+  @@index([socCode])
+}
+
+model OnetSocMap {
+  id               String @id @default(uuid()) @db.Uuid
+  datasetVersionId String @db.Uuid
+  onetCode         String
+  socCode          String
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+  socTitle       SocTitle       @relation(fields: [datasetVersionId, socCode], references: [datasetVersionId, socCode], onDelete: Cascade)
+
+  @@unique([datasetVersionId, onetCode, socCode])
+  @@index([datasetVersionId, socCode])
+}
+
+model OnetDuty {
+  id               String   @id @default(uuid()) @db.Uuid
+  datasetVersionId String   @db.Uuid
+  onetCode         String
+  dutyText         String
+  dutyTextNorm     String
+  createdAt        DateTime @default(now())
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+
+  @@index([datasetVersionId, onetCode])
+}
+
+model GeoCounty {
+  id               String @id @default(uuid()) @db.Uuid
+  datasetVersionId String @db.Uuid
+  countyFips       String
+  stateAb          String
+  countyName       String
+  countyNameNorm   String
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+  cbsaLinks      GeoCountyToCbsa[]
+
+  @@unique([datasetVersionId, countyFips])
+  @@index([datasetVersionId, stateAb, countyNameNorm])
+}
+
+model GeoCbsa {
+  id               String  @id @default(uuid()) @db.Uuid
+  datasetVersionId String  @db.Uuid
+  cbsaCode         String
+  cbsaName         String
+  isMetropolitan   Boolean @default(true)
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+  counties       GeoCountyToCbsa[]
+
+  @@unique([datasetVersionId, cbsaCode])
+}
+
+model GeoCountyToCbsa {
+  id               String @id @default(uuid()) @db.Uuid
+  datasetVersionId String @db.Uuid
+  countyFips       String
+  cbsaCode         String
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+  county         GeoCounty      @relation(fields: [datasetVersionId, countyFips], references: [datasetVersionId, countyFips], onDelete: Cascade)
+  cbsa           GeoCbsa        @relation(fields: [datasetVersionId, cbsaCode], references: [datasetVersionId, cbsaCode], onDelete: Cascade)
+
+  @@unique([datasetVersionId, countyFips, cbsaCode])
+  @@index([datasetVersionId, cbsaCode])
+}

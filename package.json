@@ -1,0 +1,60 @@
+{
+  "name": "h1b_soc",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:migrate": "prisma migrate deploy && prisma generate",
+    "db:reset": "prisma migrate reset --force",
+    "db:seed": "prisma db seed",
+    "db:query": "tsx scripts/db/query.ts",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration --passWithNoTests",
+    "test:e2e": "playwright test",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "test:e2e:wave2": "playwright test e2e/wave2.spec.ts",
+    "smoke": "bash scripts/smoke/wave0.sh",
+    "smoke:wave1": "bash scripts/smoke/wave1.sh",
+    "smoke:wave2": "bash scripts/smoke/wave2.sh",
+    "admin:add-user": "tsx scripts/admin/create_access_user.ts",
+    "admin:disable-user": "tsx scripts/admin/disable_access_user.ts",
+    "admin:datasets:list": "tsx scripts/admin/datasets_list.ts",
+    "admin:datasets:activate": "tsx scripts/admin/datasets_activate.ts",
+    "admin:datasets:rollback": "tsx scripts/admin/datasets_rollback.ts",
+    "ingest:all": "tsx scripts/ingest/ingest_all.ts",
+    "acceptance:all": "tsx scripts/acceptance/run_all.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.18.0",
+    "bcryptjs": "^2.4.3",
+    "csv-parse": "^5.6.0",
+    "ioredis": "^5.4.1",
+    "next": "14.2.4",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "unzipper": "^0.12.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.12.7",
+    "@types/react": "^18.2.79",
+    "@types/react-dom": "^18.2.25",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.4",
+    "prettier": "^3.2.5",
+    "prisma": "^5.18.0",
+    "tsx": "^4.16.2",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "packageManager": "pnpm@9.12.3+sha512.cce0f9de9c5a7c95bef944169cc5dfe8741abfb145078c0d508b868056848a87c81e626246cb60967cbd7fd29a6c062ef73ff840d96b3c86c40ac92cf4a813ee"
+}
