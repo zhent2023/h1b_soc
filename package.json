@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "db:migrate": "prisma migrate deploy && prisma generate",
@@ -45,6 +46,7 @@
     "@types/node": "^20.12.7",
     "@types/react": "^18.2.79",
     "@types/react-dom": "^18.2.25",
+    "@types/unzipper": "^0.10.9",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.4",
     "prettier": "^3.2.5",

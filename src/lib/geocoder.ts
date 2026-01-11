@@ -238,7 +238,7 @@ export async function geocode(input: GeocodeInput): Promise<GeocodeResult> {
   if (provider === 'census') {
     const timeoutMs = Number(process.env.GEOCODER_TIMEOUT_MS ?? '5000');
     const result = await geocodeCensus(normalized, Number.isFinite(timeoutMs) ? timeoutMs : 5000);
-    const withExplain = {
+    const withExplain: GeocodeResult = {
       ...result,
       explain: [...explain, ...result.explain.filter((entry) => entry !== 'provider=census')],
     };
@@ -264,7 +264,7 @@ export async function geocode(input: GeocodeInput): Promise<GeocodeResult> {
     zip === '01460' ||
     (text.includes('littleton') && (text.includes('ma') || stateAb === 'MA'))
   ) {
-    const result = {
+    const result: GeocodeResult = {
       stateAb: 'MA',
       countyFips: '25017',
       countyName: 'Middlesex County',
@@ -281,7 +281,7 @@ export async function geocode(input: GeocodeInput): Promise<GeocodeResult> {
     zip === '11206' ||
     (text.includes('brooklyn') && (text.includes('ny') || stateAb === 'NY'))
   ) {
-    const result = {
+    const result: GeocodeResult = {
       stateAb: 'NY',
       countyFips: '36047',
       countyName: 'Kings County',
@@ -297,7 +297,7 @@ export async function geocode(input: GeocodeInput): Promise<GeocodeResult> {
     zip === '78759' ||
     (text.includes('austin') && (text.includes('tx') || stateAb === 'TX'))
   ) {
-    const result = {
+    const result: GeocodeResult = {
       stateAb: 'TX',
       countyFips: '48453',
       countyName: 'Travis County',
@@ -313,7 +313,7 @@ export async function geocode(input: GeocodeInput): Promise<GeocodeResult> {
     zip === '91789' ||
     (text.includes('city of industry') && (text.includes('ca') || stateAb === 'CA'))
   ) {
-    const result = {
+    const result: GeocodeResult = {
       stateAb: 'CA',
       countyFips: '06037',
       countyName: 'Los Angeles County',
@@ -325,7 +325,7 @@ export async function geocode(input: GeocodeInput): Promise<GeocodeResult> {
     return result;
   }
 
-  const fallback = {
+  const fallback: GeocodeResult = {
     stateAb,
     confidence: 'low',
     explain: [...explain, 'No stub match found.'],

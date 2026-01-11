@@ -172,7 +172,12 @@ export async function getWageRate(params: {
     isAcwia: record.isAcwia,
     ...levels,
     hasDataQualityIssue: record.hasDataQualityIssue,
-    dataQualityNotes: record.dataQualityNotes ?? null,
+    dataQualityNotes:
+      record.dataQualityNotes &&
+      typeof record.dataQualityNotes === 'object' &&
+      !Array.isArray(record.dataQualityNotes)
+        ? (record.dataQualityNotes as Record<string, unknown>)
+        : null,
   };
   await cacheSet(cacheKey, result, 3600);
   return result;
