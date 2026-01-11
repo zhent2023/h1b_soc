@@ -19,6 +19,8 @@ test-results/
 
 # cache
 .cache/
+.data/
+data/
 
 # OS
 .DS_Store
