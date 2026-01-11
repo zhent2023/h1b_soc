@@ -40,7 +40,6 @@ async function ensureResolvedOrSearch(page: any, query: string, areaCode: string
 
 test('auto-expands address details on low confidence', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address').click();
   await page.getByTestId('address-input').fill('PO Box 123, Boston, MA 02101');
 
   await expect(page.getByTestId('address-details')).toBeVisible({ timeout: 3000 });
@@ -50,7 +49,6 @@ test('auto-expands address details on low confidence', async ({ page }) => {
 
 test('Littleton address uses town match and parses line2', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address').click();
   await page.getByTestId('address-input').fill(addresses.littleton);
   await page.getByTestId('address-details-toggle').click();
   await expect(page.getByTestId('address-line2')).toHaveValue('Unit 7-3');
@@ -63,7 +61,6 @@ test('Littleton address uses town match and parses line2', async ({ page }) => {
 
 test('Brooklyn addresses resolve to the same county area', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address').click();
 
   for (const address of [addresses.brooklyn1, addresses.brooklyn2]) {
     await page.getByTestId('address-input').fill(address);
@@ -75,7 +72,6 @@ test('Brooklyn addresses resolve to the same county area', async ({ page }) => {
 
 test('Austin and City of Industry resolve or allow confirmation search', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address').click();
 
   await page.getByTestId('address-input').fill(addresses.austin);
   await runLookup(page);
@@ -88,7 +84,6 @@ test('Austin and City of Industry resolve or allow confirmation search', async (
 
 test('confirmation flow candidate search resolves override', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address').click();
   await page.getByTestId('address-input').fill('Nowhere, MA 00000');
   await runLookup(page);
   await expect(page.getByTestId('result-kind')).toContainText('geo_needs_confirmation');

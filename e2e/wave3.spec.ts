@@ -18,7 +18,6 @@ test.beforeEach(async ({ page }) => {
 
 test('address only mode resolves fixture address', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address').click();
   await page.getByTestId('address-input').fill(addressLittleton);
 
   await runLookup(page);
@@ -28,7 +27,6 @@ test('address only mode resolves fixture address', async ({ page }) => {
 
 test('address + soc shows wage quality banner when flagged', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address-soc').click();
   await page.getByTestId('address-input').fill(addressLittleton);
   await page.getByTestId('soc-input').fill('13-1161');
 
@@ -41,7 +39,6 @@ test('address + soc shows wage quality banner when flagged', async ({ page }) =>
 
 test('salary unit hour computes met wage level', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address-soc').click();
   await page.getByTestId('address-input').fill(addressLittleton);
   await page.getByTestId('soc-input').fill('15-1252');
   await page.getByTestId('salary-input').fill('60');
@@ -54,7 +51,6 @@ test('salary unit hour computes met wage level', async ({ page }) => {
 
 test('soc only mode supports 8-digit input for extremes', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-soc').click();
   await page.getByTestId('soc-input').fill('15-1252.01');
 
   await runLookup(page);
@@ -65,7 +61,6 @@ test('soc only mode supports 8-digit input for extremes', async ({ page }) => {
 
 test('confirmation flow resolves with override selection', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address').click();
   await page.getByTestId('address-input').fill('Nowhere, MA 00000');
 
   await runLookup(page);

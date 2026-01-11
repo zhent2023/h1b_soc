@@ -35,7 +35,7 @@ async function globalSetup(config: FullConfig) {
   }
 
   await page.waitForURL('**/', { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('mode-address').waitFor({ state: 'visible', timeout: 30_000 });
+  await page.getByTestId('address-input').waitFor({ state: 'visible', timeout: 30_000 });
 
   await page.context().storageState({ path: storageStatePath });
   await browser.close();

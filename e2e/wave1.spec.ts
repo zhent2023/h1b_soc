@@ -39,7 +39,6 @@ const socChecks = [
 
 test('address only mode resolves fixture addresses', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address').click();
 
   for (const address of addresses) {
     await page.getByTestId('address-input').fill(address.input);
@@ -54,7 +53,6 @@ test('address only mode resolves fixture addresses', async ({ page }) => {
 
 test('address + soc mode shows wages and warnings where applicable', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-address-soc').click();
   await page.getByTestId('address-input').fill(addresses[0].input);
 
   for (const check of socChecks) {
@@ -88,7 +86,6 @@ test('address + soc mode shows wages and warnings where applicable', async ({ pa
 
 test('soc only mode extremes are stable', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('mode-soc').click();
   await page.getByTestId('soc-input').fill('15-1252');
 
   const runLookup = async () => {
