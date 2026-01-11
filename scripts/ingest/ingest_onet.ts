@@ -64,7 +64,10 @@ async function main() {
   const zip = await openZip(resolvedZipPath);
   const entries = zip.files.filter((entry: ZipEntry) => !entry.path.endsWith('/'));
 
-  const dutyEntry = pickEntry(entries, [/task/i, /duty/i], dutyFile);
+  const dutyEntry =
+    (dutyFile ? pickEntry(entries, [/task/i, /duty/i], dutyFile) : null) ??
+    entries.find((entry) => /task statements/i.test(entry.path)) ??
+    pickEntry(entries, [/task/i, /duty/i], dutyFile);
   const mapEntry = pickEntry(
     entries,
     [/soc/i, /crosswalk/i, /occupation/i, /mapping/i],

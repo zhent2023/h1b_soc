@@ -153,7 +153,7 @@ async function main() {
       const areaCode =
         getField(row, ['area_code', 'area']) ?? getField(row, ['areacode', 'areaid']);
       const areaName = getField(row, ['area_name', 'areaname', 'name']);
-      const stateAb = getField(row, ['state', 'state_ab', 'stateab']);
+      const stateAb = getField(row, ['state_ab', 'stateab', 'state']);
       const countyTownRaw =
         getField(row, ['county_town_name', 'county_town', 'countytownname']) ?? null;
       const countyName =

@@ -18,7 +18,7 @@ function getArgValue(flag: string): string | null {
 async function main() {
   const emailRaw = getArgValue('--email');
   if (!emailRaw) {
-    console.error('Usage: pnpm admin:add-user -- --email someone@example.com');
+    console.error('Usage: pnpm admin:add-access-user -- --email someone@example.com');
     process.exitCode = 1;
     return;
   }

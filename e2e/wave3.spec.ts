@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const addressLittleton = '410 Great Road B9 Unit 7-3, Littleton, MA 01460';
 
+
 async function runLookup(page: any) {
   await Promise.all([
     page.waitForResponse(
@@ -12,13 +13,7 @@ async function runLookup(page: any) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(
-    ({ email, key }) => {
-      localStorage.setItem('accessEmail', email);
-      localStorage.setItem('accessKey', key);
-    },
-    { email: 'demo@example.com', key: 'demo-key' },
-  );
+  await page.goto('/');
 });
 
 test('address only mode resolves fixture address', async ({ page }) => {

@@ -53,11 +53,19 @@ async function main() {
   const accessEmail = 'demo@example.com';
   const accessKey = 'demo-key';
   const keyHash = await bcrypt.hash(accessKey, 10);
+  const demoPassword = 'demo-password';
+  const passwordHash = await bcrypt.hash(demoPassword, 10);
 
   await prisma.accessUser.upsert({
     where: { email: accessEmail },
     update: { keyHash, isActive: true },
     create: { email: accessEmail, keyHash, isActive: true },
+  });
+
+  await prisma.user.upsert({
+    where: { email: accessEmail },
+    update: { passwordHash, isActive: true },
+    create: { email: accessEmail, passwordHash, isActive: true },
   });
 
   const areaFixtures = [
