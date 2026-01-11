@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { parseFullAddress, type ParsedAddress } from '../src/lib/address';
 
@@ -8,6 +9,7 @@ type Mode = 'address' | 'address_soc' | 'soc';
 const confirmationStorageKey = 'lookupConfirmation';
 
 export default function HomePage() {
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>('address');
   const [addressText, setAddressText] = useState('');
   const [addressDetails, setAddressDetails] = useState<ParsedAddress | null>(null);
@@ -15,8 +17,6 @@ export default function HomePage() {
   const [socCode, setSocCode] = useState('');
   const [salaryAmount, setSalaryAmount] = useState('');
   const [salaryUnit, setSalaryUnit] = useState<'year' | 'hour'>('year');
-  const [email, setEmail] = useState('');
-  const [accessKey, setAccessKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [response, setResponse] = useState<any>(null);
@@ -25,6 +25,8 @@ export default function HomePage() {
   const [candidateResults, setCandidateResults] = useState<any[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [candidateError, setCandidateError] = useState('');
+  const [authMode, setAuthMode] = useState<'public' | 'invite' | null>(null);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
 
   const parsedAddress = useMemo(
     () => (addressText.trim() ? parseFullAddress(addressText) : null),
@@ -32,9 +34,33 @@ export default function HomePage() {
   );
 
   useEffect(() => {
-    setEmail(localStorage.getItem('accessEmail') ?? '');
-    setAccessKey(localStorage.getItem('accessKey') ?? '');
-  }, []);
+    let active = true;
+    const fetchAuth = async () => {
+      try {
+        const res = await fetch('/api/v1/auth/me', { credentials: 'include' });
+        if (!active) return;
+        if (!res.ok) {
+          router.replace('/login');
+          return;
+        }
+        const data = await res.json();
+        if (data?.mode === 'public') {
+          setAuthMode('public');
+          setAuthEmail(null);
+        } else {
+          setAuthMode('invite');
+          setAuthEmail(data?.email ?? null);
+        }
+      } catch {
+        if (!active) return;
+        router.replace('/login');
+      }
+    };
+    fetchAuth();
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   useEffect(() => {
     if (!parsedAddress) {
@@ -100,9 +126,12 @@ export default function HomePage() {
     }
   }, [response, lastRequest]);
 
-  const updateStoredCredentials = () => {
-    localStorage.setItem('accessEmail', email.trim());
-    localStorage.setItem('accessKey', accessKey.trim());
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+    } finally {
+      router.replace('/login');
+    }
   };
 
   const buildRequestBody = (override?: { areaCode?: string }) => {
@@ -142,7 +171,6 @@ export default function HomePage() {
   const runLookup = async (override?: { areaCode?: string }) => {
     setLoading(true);
     setError('');
-    updateStoredCredentials();
     const body = buildRequestBody(override);
     setLastRequest(body);
 
@@ -151,9 +179,8 @@ export default function HomePage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(email ? { 'x-access-email': email } : {}),
-          ...(accessKey ? { 'x-access-key': accessKey } : {}),
         },
+        credentials: 'include',
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -209,12 +236,7 @@ export default function HomePage() {
       if (candidateQuery.trim()) {
         url.searchParams.set('q', candidateQuery.trim());
       }
-      const res = await fetch(url.toString(), {
-        headers: {
-          ...(email ? { 'x-access-email': email } : {}),
-          ...(accessKey ? { 'x-access-key': accessKey } : {}),
-        },
-      });
+      const res = await fetch(url.toString(), { credentials: 'include' });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data?.error ?? 'Candidate search failed.');
@@ -444,33 +466,33 @@ export default function HomePage() {
     );
   };
 
+  if (!authMode) {
+    return (
+      <main style={{ maxWidth: 880, margin: '32px auto', padding: '0 16px' }}>
+        <h1>H1B SOC</h1>
+        <p>Loading...</p>
+      </main>
+    );
+  }
+
   return (
     <main style={{ maxWidth: 880, margin: '32px auto', padding: '0 16px' }}>
-      <h1>H1B SOC</h1>
-      <p>Query wage and SOC data with address and SOC inputs.</p>
-
-      <section style={{ border: '1px solid #ddd', padding: 16, borderRadius: 8 }}>
-        <h2>Credentials</h2>
-        <div style={{ display: 'grid', gap: 12 }}>
-          <label>
-            Email
-            <input
-              style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </label>
-          <label>
-            Access Key
-            <input
-              style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-              type="password"
-              value={accessKey}
-              onChange={(event) => setAccessKey(event.target.value)}
-            />
-          </label>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 style={{ marginBottom: 8 }}>H1B SOC</h1>
+          <p>Query wage and SOC data with address and SOC inputs.</p>
         </div>
-      </section>
+        {authMode === 'invite' && authEmail ? (
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ marginBottom: 8 }}>Signed in as {authEmail}</div>
+            <button type="button" onClick={handleLogout}>
+              Sign Out
+            </button>
+          </div>
+        ) : authMode === 'public' ? (
+          <div style={{ textAlign: 'right' }}>Public access</div>
+        ) : null}
+      </div>
 
       <section style={{ marginTop: 24 }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>

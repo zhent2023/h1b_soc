@@ -1,8 +1,11 @@
 import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
 
+import { getCookieValue, hashSessionToken, SESSION_COOKIE_NAME } from './session';
+
 export interface AccessContext {
   email: string;
+  source?: 'public' | 'session' | 'api_key';
 }
 
 export class AccessError extends Error {
@@ -24,7 +27,24 @@ export async function requireAccess(
 ): Promise<AccessContext> {
   const accessMode = process.env.ACCESS_MODE ?? 'invite';
   if (accessMode === 'public') {
-    return { email: 'public' };
+    return { email: 'public', source: 'public' };
+  }
+
+  const sessionToken = getCookieValue(req, SESSION_COOKIE_NAME);
+  if (sessionToken) {
+    const tokenHash = hashSessionToken(sessionToken);
+    const session = await prisma.session.findFirst({
+      where: {
+        tokenHash,
+        expiresAt: { gt: new Date() },
+        user: { isActive: true },
+      },
+      include: { user: true },
+    });
+
+    if (session?.user?.email) {
+      return { email: session.user.email, source: 'session' };
+    }
   }
 
   const emailHeader = process.env.ACCESS_EMAIL_HEADER ?? 'x-access-email';
@@ -34,7 +54,7 @@ export async function requireAccess(
   const accessKey = getHeader(req, tokenHeader);
 
   if (!emailRaw || !accessKey) {
-    throw new AccessError('Missing access headers', 401);
+    throw new AccessError('Missing access credentials', 401);
   }
 
   const email = emailRaw.trim().toLowerCase();
@@ -51,5 +71,5 @@ export async function requireAccess(
     throw new AccessError('Access denied', 403);
   }
 
-  return { email: accessUser.email };
+  return { email: accessUser.email, source: 'api_key' };
 }

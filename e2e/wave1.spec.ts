@@ -37,16 +37,6 @@ const socChecks = [
   { code: '13-1081.01', expectDuties: true, expectWarning: true, expectWage: true },
 ];
 
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(
-    ({ email, key }) => {
-      localStorage.setItem('accessEmail', email);
-      localStorage.setItem('accessKey', key);
-    },
-    { email: 'demo@example.com', key: 'demo-key' },
-  );
-});
-
 test('address only mode resolves fixture addresses', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('mode-address').click();

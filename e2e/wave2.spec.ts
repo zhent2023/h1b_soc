@@ -8,6 +8,7 @@ const addresses = {
   industry: '131 Marcellin Dr, City of Industry, CA 91789',
 };
 
+
 async function runLookup(page: any) {
   await Promise.all([
     page.waitForResponse(
@@ -36,16 +37,6 @@ async function ensureResolvedOrSearch(page: any, query: string, areaCode: string
   }
   await expect(page.getByTestId('area-code')).toHaveText(areaCode, { timeout: 5000 });
 }
-
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(
-    ({ email, key }) => {
-      localStorage.setItem('accessEmail', email);
-      localStorage.setItem('accessKey', key);
-    },
-    { email: 'demo@example.com', key: 'demo-key' },
-  );
-});
 
 test('auto-expands address details on low confidence', async ({ page }) => {
   await page.goto('/');
