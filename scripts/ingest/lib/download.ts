@@ -1,5 +1,7 @@
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
+import { ReadableStream as WebReadableStream } from 'stream/web';
 import { pipeline } from 'stream/promises';
 import { createHash } from 'crypto';
 
@@ -24,7 +26,8 @@ export async function downloadToCache(url: string, cacheDir: string): Promise<{
     throw new Error(`DOWNLOAD_FAILED status=${res.status} url=${url}`);
   }
 
-  await pipeline(res.body, fs.createWriteStream(dest));
+  const bodyStream = Readable.fromWeb(res.body as unknown as WebReadableStream);
+  await pipeline(bodyStream, fs.createWriteStream(dest));
   console.log(`DOWNLOAD status=download url=${url} path=${dest}`);
   return { path: dest, hit: false };
 }

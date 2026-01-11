@@ -2,7 +2,14 @@ import path from 'path';
 
 import { PrismaClient } from '@prisma/client';
 
-import { getField, inferDelimiter, openZip, parseCsvStream, resolveZipPath } from './utils';
+import {
+  ZipEntry,
+  getField,
+  inferDelimiter,
+  openZip,
+  parseCsvStream,
+  resolveZipPath,
+} from './utils';
 
 const prisma = new PrismaClient();
 
@@ -22,7 +29,7 @@ function getArgValue(flag: string): string | undefined {
 }
 
 function pickEntry(
-  entries: { path: string }[],
+  entries: ZipEntry[],
   patterns: RegExp[],
   explicit?: string,
   exclude?: string,
@@ -55,7 +62,7 @@ async function main() {
 
   const resolvedZipPath = await resolveZipPath({ zipPath, zipUrl });
   const zip = await openZip(resolvedZipPath);
-  const entries = zip.files.filter((entry) => !entry.path.endsWith('/'));
+  const entries = zip.files.filter((entry: ZipEntry) => !entry.path.endsWith('/'));
 
   const dutyEntry = pickEntry(entries, [/task/i, /duty/i], dutyFile);
   const mapEntry = pickEntry(

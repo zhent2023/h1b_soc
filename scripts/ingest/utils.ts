@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
+import { ReadableStream as WebReadableStream } from 'stream/web';
 
 import unzipper from 'unzipper';
 import { parse } from 'csv-parse';
@@ -23,12 +25,22 @@ export async function resolveZipPath(params: { zipPath?: string; zipUrl?: string
     '/tmp',
     `ingest_${Date.now()}_${Math.random().toString(36).slice(2)}.zip`,
   );
-  await pipeline(res.body, fs.createWriteStream(filename));
+  const bodyStream = Readable.fromWeb(res.body as unknown as WebReadableStream);
+  await pipeline(bodyStream, fs.createWriteStream(filename));
   return filename;
 }
 
-export async function openZip(zipPath: string) {
-  return unzipper.Open.file(zipPath);
+export type ZipEntry = {
+  path: string;
+  stream: () => NodeJS.ReadableStream;
+};
+
+export type ZipDirectory = {
+  files: ZipEntry[];
+};
+
+export async function openZip(zipPath: string): Promise<ZipDirectory> {
+  return unzipper.Open.file(zipPath) as Promise<ZipDirectory>;
 }
 
 export function normalizeKey(key: string) {
