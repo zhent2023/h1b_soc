@@ -5,12 +5,11 @@ import { useRouter } from 'next/navigation';
 
 import { parseFullAddress, type ParsedAddress } from '../src/lib/address';
 
-type Mode = 'address' | 'address_soc' | 'soc';
+type DetectedMode = 'address' | 'address_soc' | 'soc' | 'none';
 const confirmationStorageKey = 'lookupConfirmation';
 
 export default function HomePage() {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>('address');
   const [addressText, setAddressText] = useState('');
   const [addressDetails, setAddressDetails] = useState<ParsedAddress | null>(null);
   const [showAddressDetails, setShowAddressDetails] = useState(false);
@@ -27,6 +26,36 @@ export default function HomePage() {
   const [candidateError, setCandidateError] = useState('');
   const [authMode, setAuthMode] = useState<'public' | 'invite' | null>(null);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
+
+  const trimmedAddress = addressText.trim();
+  const trimmedSoc = socCode.trim();
+  const hasAddress = trimmedAddress.length > 0;
+  const hasSoc = trimmedSoc.length > 0;
+  const detectedMode: DetectedMode = hasAddress && hasSoc ? 'address_soc' : hasAddress ? 'address' : hasSoc ? 'soc' : 'none';
+  const modeLabel =
+    detectedMode === 'address'
+      ? 'Mode: Address only'
+      : detectedMode === 'address_soc'
+        ? 'Mode: Address + SOC'
+        : detectedMode === 'soc'
+          ? 'Mode: SOC only'
+          : '';
+  const submitLabel =
+    detectedMode === 'address'
+      ? 'Lookup Geo'
+      : detectedMode === 'address_soc'
+        ? 'Lookup Wages'
+        : detectedMode === 'soc'
+          ? 'Find Extremes'
+          : 'Lookup';
+  const socSuffixMatch = trimmedSoc.match(/^(\d{2}-\d{4})\.(\d{2})$/);
+  const salaryNumber = Number(salaryAmount);
+  const salaryWarning =
+    detectedMode === 'address_soc' &&
+    salaryUnit === 'year' &&
+    Number.isFinite(salaryNumber) &&
+    salaryNumber > 0 &&
+    salaryNumber < 1000;
 
   const parsedAddress = useMemo(
     () => (addressText.trim() ? parseFullAddress(addressText) : null),
@@ -102,13 +131,6 @@ export default function HomePage() {
         if (saved.lastRequest.salaryUnit === 'hour' || saved.lastRequest.salaryUnit === 'year') {
           setSalaryUnit(saved.lastRequest.salaryUnit);
         }
-        if (saved.lastRequest.address && saved.lastRequest.socCode) {
-          setMode('address_soc');
-        } else if (saved.lastRequest.address) {
-          setMode('address');
-        } else if (saved.lastRequest.socCode) {
-          setMode('soc');
-        }
       }
     } catch {
       sessionStorage.removeItem(confirmationStorageKey);
@@ -136,29 +158,25 @@ export default function HomePage() {
 
   const buildRequestBody = (override?: { areaCode?: string }) => {
     const body: any = {};
-    if (mode === 'address' || mode === 'address_soc') {
-      const trimmed = addressText.trim();
-      if (trimmed) {
-        const parsed = addressDetails ?? parseFullAddress(trimmed);
+    if (hasAddress) {
+      if (trimmedAddress) {
+        const parsed = addressDetails ?? parseFullAddress(trimmedAddress);
         const line1 = parsed.line2 ? `${parsed.line1} ${parsed.line2}`.trim() : parsed.line1;
         body.address = {
-          fullText: trimmed,
+          fullText: trimmedAddress,
           line1: line1 || undefined,
           city: parsed.city || undefined,
           state: parsed.state || undefined,
           zip: parsed.zip || undefined,
         };
-      } else {
-        body.address = { fullText: trimmed };
       }
     }
-    if (mode === 'address_soc' || mode === 'soc') {
-      body.socCode = socCode.trim();
+    if (hasSoc) {
+      body.socCode = trimmedSoc;
     }
-    if (mode === 'address_soc' && salaryAmount.trim()) {
-      const parsedSalary = Number(salaryAmount);
-      if (Number.isFinite(parsedSalary)) {
-        body.proposedSalary = parsedSalary;
+    if (hasAddress && hasSoc && salaryAmount.trim()) {
+      if (Number.isFinite(salaryNumber)) {
+        body.proposedSalary = salaryNumber;
         body.salaryUnit = salaryUnit;
       }
     }
@@ -171,6 +189,11 @@ export default function HomePage() {
   const runLookup = async (override?: { areaCode?: string }) => {
     setLoading(true);
     setError('');
+    if (detectedMode === 'none') {
+      setError('Paste an address, enter a SOC code, or both.');
+      setLoading(false);
+      return;
+    }
     const body = buildRequestBody(override);
     setLastRequest(body);
 
@@ -495,44 +518,39 @@ export default function HomePage() {
       </div>
 
       <section style={{ marginTop: 24 }}>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button type="button" onClick={() => setMode('address')} data-testid="mode-address">
-            Address Only
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('address_soc')}
-            data-testid="mode-address-soc"
+        {modeLabel ? (
+          <div
+            style={{ marginBottom: 12, color: '#1f2937', fontWeight: 600 }}
+            data-testid="detected-mode"
           >
-            Address + SOC
-          </button>
-          <button type="button" onClick={() => setMode('soc')} data-testid="mode-soc">
-            SOC Only
-          </button>
-        </div>
-
-        {(mode === 'address' || mode === 'address_soc') && (
-          <label style={{ display: 'block', marginBottom: 12 }}>
-            Address
-            <textarea
-              style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-              rows={3}
-              value={addressText}
-              onChange={(event) => setAddressText(event.target.value)}
-              placeholder="123 Main St, City, ST 12345"
-              data-testid="address-input"
-            />
-            <div style={{ marginTop: 8 }}>
-              <button
-                type="button"
-                onClick={() => setShowAddressDetails((prev) => !prev)}
-                data-testid="address-details-toggle"
-              >
-                {showAddressDetails ? 'Hide address details' : 'Edit address details'}
-              </button>
-            </div>
-          </label>
+            {modeLabel}
+          </div>
+        ) : (
+          <div style={{ marginBottom: 12, color: '#6b7280' }} data-testid="empty-hint">
+            Paste an address, enter a SOC code, or both.
+          </div>
         )}
+
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          Address
+          <textarea
+            style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+            rows={3}
+            value={addressText}
+            onChange={(event) => setAddressText(event.target.value)}
+            placeholder="123 Main St, City, ST 12345"
+            data-testid="address-input"
+          />
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => setShowAddressDetails((prev) => !prev)}
+              data-testid="address-details-toggle"
+            >
+              {showAddressDetails ? 'Hide address details' : 'Edit address details'}
+            </button>
+          </div>
+        </label>
 
         {showAddressDetails && addressDetails ? (
           <div
@@ -597,24 +615,29 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        {(mode === 'soc' || mode === 'address_soc') && (
-          <label style={{ display: 'block', marginBottom: 12 }}>
-            SOC Code
-            <input
-              style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-              value={socCode}
-              onChange={(event) => setSocCode(event.target.value)}
-              placeholder="15-1252"
-              data-testid="soc-input"
-            />
-            <div style={{ marginTop: 6, fontSize: 12, color: '#555' }} data-testid="soc-help">
-              Formats: 15-1252 (SOC-6) or 15-1252.01 (O*NET 8-digit). .00 is broad; .01+ is
-              detailed. Wages use SOC-6; duties use O*NET 8-digit with fallback.
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          SOC Code
+          <input
+            style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+            value={socCode}
+            onChange={(event) => setSocCode(event.target.value)}
+            placeholder="15-1252"
+            data-testid="soc-input"
+          />
+          <div style={{ marginTop: 6, fontSize: 12, color: '#555' }} data-testid="soc-help">
+            Wages use SOC-6; duties use O*NET 8-digit with fallback.
+          </div>
+          {socSuffixMatch ? (
+            <div
+              style={{ marginTop: 6, fontSize: 12, color: '#7c2d12' }}
+              data-testid="soc-suffix-note"
+            >
+              Using {socSuffixMatch[1]} for wages (O*NET suffix .{socSuffixMatch[2]} ignored).
             </div>
-          </label>
-        )}
+          ) : null}
+        </label>
 
-        {mode === 'address_soc' && (
+        {detectedMode === 'address_soc' && (
           <div style={{ display: 'grid', gap: 12, marginBottom: 12 }}>
             <label>
               Proposed Salary
@@ -641,10 +664,7 @@ export default function HomePage() {
                 <option value="hour">Hour</option>
               </select>
             </label>
-            {salaryUnit === 'year' &&
-            salaryAmount.trim() &&
-            Number.isFinite(Number(salaryAmount)) &&
-            Number(salaryAmount) < 1000 ? (
+            {salaryWarning ? (
               <div style={{ color: '#b45309' }} data-testid="salary-warning">
                 Salary looks low for annual input. Did you mean hourly?
               </div>
@@ -655,10 +675,10 @@ export default function HomePage() {
         <button
           type="button"
           onClick={() => runLookup()}
-          disabled={loading}
+          disabled={loading || detectedMode === 'none'}
           data-testid="lookup-button"
         >
-          {loading ? 'Loading...' : 'Lookup'}
+          {loading ? 'Loading...' : submitLabel}
         </button>
 
         {error ? <div style={{ color: '#b91c1c', marginTop: 12 }}>{error}</div> : null}
