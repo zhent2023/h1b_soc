@@ -19,6 +19,10 @@ test-results/
 
 # cache
 .cache/
+.data/
+data/
 
 # OS
 .DS_Store
+.vercel
+.env*.local
