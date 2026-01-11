@@ -108,11 +108,22 @@ function normalizeCountyFips(raw?: string | null): string | null {
 
 function deriveCountyFips(row: Record<string, string>): string | null {
   const direct = normalizeCountyFips(
-    getField(row, ['county_fips', 'fips', 'fipscounty', 'county_code', 'countyfips']),
+    getField(row, [
+      'county_fips',
+      'fips',
+      'fipscounty',
+      'county_code',
+      'countyfips',
+      'geoid',
+      'geoid_fq',
+      'geoidfq',
+    ]),
   );
   if (direct) return direct;
   const statePart = normalizeDigits(getField(row, ['state_fips', 'statefips', 'stfips']));
-  const countyPart = normalizeDigits(getField(row, ['county_fips', 'countyfips', 'county']));
+  const countyPart = normalizeDigits(
+    getField(row, ['county_fips', 'countyfips', 'county', 'geoid']),
+  );
   if (statePart && countyPart) {
     const state = statePart.padStart(2, '0').slice(-2);
     const county = countyPart.padStart(3, '0').slice(-3);
@@ -123,7 +134,7 @@ function deriveCountyFips(row: Record<string, string>): string | null {
 
 function deriveStateAb(row: Record<string, string>, countyFips?: string | null): string {
   const direct =
-    getField(row, ['state_ab', 'state', 'state_code', 'st']) ??
+    getField(row, ['state_ab', 'state', 'state_code', 'st', 'usps']) ??
     getField(row, ['stateabbr']);
   if (direct && direct.trim().length === 2) {
     return direct.trim().toUpperCase();
@@ -159,7 +170,7 @@ async function main() {
     [/cbsa.*county/i, /county.*cbsa/i, /crosswalk/i],
     crosswalkFile,
   );
-  const countyEntry = pickEntry(entries, [/county/i], countyFile);
+  const countyEntry = pickEntry(entries, [/count(y|ies)/i], countyFile);
   const cbsaEntry = pickEntry(entries, [/cbsa/i, /msa/i], cbsaFile);
 
   if (!crosswalkEntry && !countyEntry && !cbsaEntry) {

@@ -82,6 +82,9 @@ export async function parseCsvStream(params: {
 
 export function inferDelimiter(name: string) {
   const lower = name.toLowerCase();
+  if (lower.includes('gaz_counties') || lower.includes('gazetteer')) {
+    return '|';
+  }
   if (lower.endsWith('.tsv') || lower.endsWith('.txt')) {
     return '\t';
   }
