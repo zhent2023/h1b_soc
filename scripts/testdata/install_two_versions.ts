@@ -13,16 +13,20 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function roundToCents(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 function buildLevels(l1Annual: number, l1Hourly: number) {
   return {
     l1Annual,
-    l1Hourly,
+    l1Hourly: roundToCents(l1Hourly),
     l2Annual: l1Annual + 10000,
-    l2Hourly: l1Hourly + 5,
+    l2Hourly: roundToCents(l1Hourly + 5),
     l3Annual: l1Annual + 20000,
-    l3Hourly: l1Hourly + 10,
+    l3Hourly: roundToCents(l1Hourly + 10),
     l4Annual: l1Annual + 30000,
-    l4Hourly: l1Hourly + 15,
+    l4Hourly: roundToCents(l1Hourly + 15),
   };
 }
 
@@ -80,7 +84,7 @@ async function seedOflc(versionId: string, label: string, wageAnnual: number) {
         isAcwia: false,
         areaCode: AREA_CODE,
         socCode: SOC_CODE,
-        ...buildLevels(wageAnnual, Math.round(wageAnnual / 2080)),
+        ...buildLevels(wageAnnual, roundToCents(wageAnnual / 2080)),
         hasDataQualityIssue: false,
       },
     ],
@@ -115,6 +119,7 @@ async function seedOnet(versionId: string, label: string, dutyText: string) {
         onetCode: `${SOC_CODE}.00`,
         dutyText: dutyText,
         dutyTextNorm: normalize(dutyText),
+        sortOrder: 1,
       },
     ],
   });

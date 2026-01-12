@@ -104,13 +104,13 @@ model WageRate {
   areaCode             String
   socCode              String
   l1Annual             Int
-  l1Hourly             Int?
+  l1Hourly             Decimal? @db.Decimal(10, 2)
   l2Annual             Int?
-  l2Hourly             Int?
+  l2Hourly             Decimal? @db.Decimal(10, 2)
   l3Annual             Int?
-  l3Hourly             Int?
+  l3Hourly             Decimal? @db.Decimal(10, 2)
   l4Annual             Int?
-  l4Hourly             Int?
+  l4Hourly             Decimal? @db.Decimal(10, 2)
   hasDataQualityIssue  Boolean @default(false)
   dataQualityNotes     Json?
 
@@ -156,11 +156,13 @@ model OnetDuty {
   onetCode         String
   dutyText         String
   dutyTextNorm     String
+  sortOrder        Int      @default(0)
   createdAt        DateTime @default(now())
 
   datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
 
   @@index([datasetVersionId, onetCode])
+  @@index([datasetVersionId, onetCode, sortOrder])
 }
 
 model GeoCounty {

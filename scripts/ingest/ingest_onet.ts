@@ -90,6 +90,7 @@ async function main() {
   });
 
   let dutyCount = 0;
+  let dutyOrder = 0;
   if (dutyEntry) {
     const dutyBatch: Array<any> = [];
     await parseCsvStream({
@@ -105,11 +106,13 @@ async function main() {
         if (!onetCode || !dutyText) {
           return;
         }
+        dutyOrder += 1;
         dutyBatch.push({
           datasetVersionId: datasetVersion.id,
           onetCode,
           dutyText,
           dutyTextNorm: normalizeText(dutyText),
+          sortOrder: dutyOrder,
         });
         dutyCount += 1;
         if (dutyBatch.length >= BATCH_SIZE) {

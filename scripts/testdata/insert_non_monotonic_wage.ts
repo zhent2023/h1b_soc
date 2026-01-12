@@ -3,6 +3,20 @@ import Redis from 'ioredis';
 
 const prisma = new PrismaClient();
 
+function decimalToNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return Number(value);
+  if (typeof value === 'object' && value && 'toString' in value) {
+    return Number((value as { toString: () => string }).toString());
+  }
+  return null;
+}
+
+function roundToCents(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 async function main() {
   const wageYear = process.env.DEFAULT_WAGE_YEAR ?? '2025-2026';
   const areaCode = process.env.TEST_AREA_CODE ?? '35620';
@@ -30,13 +44,14 @@ async function main() {
     throw new Error('Target wage record not found for non-monotonic test.');
   }
 
-  const baseHourly = wage.l1Hourly ?? Math.round(wage.l1Annual / 2080);
+  const baseHourly =
+    decimalToNumber(wage.l1Hourly) ?? roundToCents(wage.l1Annual / 2080);
 
   await prisma.wageRate.update({
     where: { id: wage.id },
     data: {
       l2Annual: wage.l1Annual - 5000,
-      l2Hourly: baseHourly - 2,
+      l2Hourly: roundToCents(baseHourly - 2),
       hasDataQualityIssue: true,
       dataQualityNotes: { issues: ['Injected non-monotonic wage for testing.'] },
     },

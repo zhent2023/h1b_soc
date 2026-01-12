@@ -287,6 +287,17 @@ async function main() {
     return null;
   };
 
+  const toDecimal = (value: number | null, fallback?: number | null) => {
+    const resolved =
+      value !== null && Number.isFinite(value)
+        ? value
+        : fallback !== undefined && fallback !== null && Number.isFinite(fallback)
+          ? fallback
+          : null;
+    if (resolved === null) return null;
+    return Math.round(resolved * 100) / 100;
+  };
+
   for (const wageEntry of wageEntries) {
     const entryName = wageEntry.path.toLowerCase();
     const inferredIsAcwia = entryName.includes('edc_export')
@@ -348,7 +359,7 @@ async function main() {
           l1AnnualNum,
           l1HourlyNum !== null ? l1HourlyNum * 2080 : null,
         );
-        const l1Hourly = toInt(
+        const l1Hourly = toDecimal(
           l1HourlyNum,
           l1AnnualNum !== null ? l1AnnualNum / 2080 : null,
         );
@@ -360,7 +371,7 @@ async function main() {
           l2AnnualNum,
           l2HourlyNum !== null ? l2HourlyNum * 2080 : null,
         );
-        const l2Hourly = toInt(
+        const l2Hourly = toDecimal(
           l2HourlyNum,
           l2AnnualNum !== null ? l2AnnualNum / 2080 : null,
         );
@@ -368,7 +379,7 @@ async function main() {
           l3AnnualNum,
           l3HourlyNum !== null ? l3HourlyNum * 2080 : null,
         );
-        const l3Hourly = toInt(
+        const l3Hourly = toDecimal(
           l3HourlyNum,
           l3AnnualNum !== null ? l3AnnualNum / 2080 : null,
         );
@@ -376,7 +387,7 @@ async function main() {
           l4AnnualNum,
           l4HourlyNum !== null ? l4HourlyNum * 2080 : null,
         );
-        const l4Hourly = toInt(
+        const l4Hourly = toDecimal(
           l4HourlyNum,
           l4AnnualNum !== null ? l4AnnualNum / 2080 : null,
         );
