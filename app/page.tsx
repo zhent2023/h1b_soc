@@ -460,7 +460,7 @@ export default function HomePage() {
               <div className={styles.cardHint}>
                 {!hasSoc
                   ? 'Enter a SOC code to compare wage extremes across areas.'
-                  : 'Run SOC-only lookup to see national extremes.'}
+                  : 'Extremes are available when a SOC code is provided.'}
               </div>
             )}
           </div>

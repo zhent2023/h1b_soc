@@ -241,6 +241,17 @@ export async function lookup(
     explainSummary.push(...resolveResult.explain);
 
     if (resolveResult.kind === 'needs_confirmation') {
+      const extremes = soc6
+        ? await getSocExtremes({
+            prisma,
+            datasetVersionId: oflcVersionId,
+            wageYear,
+            isAcwia,
+            socCode: soc6,
+            metric: 'l1Annual',
+            n: 5,
+          })
+        : undefined;
       return {
         kind: 'geo_needs_confirmation',
         datasetVersions: {
@@ -258,6 +269,7 @@ export async function lookup(
         confirmation: {
           suggestions: resolveResult.suggestions ?? [],
         },
+        extremes,
         warnings: warnings.length ? warnings : undefined,
       };
     }
@@ -296,6 +308,15 @@ export async function lookup(
     });
 
     const duties = await resolveDuties(soc6);
+    const extremes = await getSocExtremes({
+      prisma,
+      datasetVersionId: oflcVersionId,
+      wageYear,
+      isAcwia,
+      socCode: soc6,
+      metric: 'l1Annual',
+      n: 5,
+    });
 
     const proposedSalary =
       typeof req.proposedSalary === 'number' && Number.isFinite(req.proposedSalary)
@@ -354,6 +375,7 @@ export async function lookup(
       geo,
       wages: wagePayload,
       duties,
+      extremes,
       warnings: warnings.length ? warnings : undefined,
     };
   }
