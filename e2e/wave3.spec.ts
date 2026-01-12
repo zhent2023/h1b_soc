@@ -56,8 +56,8 @@ test('soc only mode supports 8-digit input for extremes', async ({ page }) => {
   await runLookup(page);
   await expect(page.getByTestId('result-kind')).toContainText('soc_extremes', { timeout: 5000 });
   await expect(page.getByTestId('extremes-table')).toBeVisible({ timeout: 5000 });
-  await expect(page.getByTestId('extremes-lowest')).toHaveCount(5);
-  await expect(page.getByTestId('extremes-highest')).toHaveCount(5);
+  await expect(page.getByTestId('extremes-lowest')).toHaveCount(8);
+  await expect(page.getByTestId('extremes-highest')).toHaveCount(8);
 });
 
 test('confirmation flow resolves with override selection', async ({ page }) => {

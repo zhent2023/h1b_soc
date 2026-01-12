@@ -102,12 +102,12 @@ describe('lookup integration', () => {
     }
   });
 
-  it('soc only returns soc_extremes with 5 lowest and 5 highest', async () => {
+  it('soc only returns soc_extremes with 8 lowest and 8 highest', async () => {
     const response = await lookup({ socCode: '15-1252' }, { prisma });
 
     expect(response.kind).toBe('soc_extremes');
-    expect(response.extremes?.lowest.length).toBe(5);
-    expect(response.extremes?.highest.length).toBe(5);
+    expect(response.extremes?.lowest.length).toBe(8);
+    expect(response.extremes?.highest.length).toBe(8);
     expect(response.extremes?.lowest[0]?.level1.annual).toBeTypeOf('number');
     expect(response.extremes?.highest[0]?.level4.annual).toBeTypeOf('number');
   });
@@ -116,8 +116,8 @@ describe('lookup integration', () => {
     const response = await lookup({ socCode: '15-1252.01' }, { prisma });
 
     expect(response.kind).toBe('soc_extremes');
-    expect(response.extremes?.lowest.length).toBe(5);
-    expect(response.extremes?.highest.length).toBe(5);
+    expect(response.extremes?.lowest.length).toBe(8);
+    expect(response.extremes?.highest.length).toBe(8);
     const sources = response.duties?.duties.flatMap((duty) => duty.sources) ?? [];
     expect(sources.length).toBeGreaterThan(0);
     expect(sources.every((source) => source === '15-1252.01')).toBe(true);
