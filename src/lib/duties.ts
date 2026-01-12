@@ -70,7 +70,7 @@ export async function getDutiesForOnetCode(params: {
   });
 
   if (duties.length === 0) {
-    const empty = { duties: [], note: `No O*NET duties found for ${onetCode}.` };
+    const empty = { duties: [], note: `No O*NET tasks found for ${onetCode}.` };
     await cacheSet(cacheKey, empty, 3600);
     return empty;
   }
@@ -107,7 +107,7 @@ export async function getDutiesForSoc(params: {
   });
 
   if (mappings.length === 0) {
-    const empty = { duties: [], note: 'No O*NET mappings found.' };
+    const empty = { duties: [], note: 'No O*NET tasks found.' };
     await cacheSet(cacheKey, empty, 3600);
     return empty;
   }
