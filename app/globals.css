@@ -5,21 +5,26 @@
 }
 
 :root {
-  --color-ink: #0f172a;
-  --color-muted: #64748b;
-  --color-muted-strong: #475569;
-  --color-surface: rgba(255, 255, 255, 0.9);
-  --color-surface-soft: rgba(248, 249, 251, 0.94);
-  --color-surface-strong: rgba(255, 255, 255, 0.95);
-  --color-stroke: rgba(148, 163, 184, 0.28);
-  --color-stroke-strong: rgba(148, 163, 184, 0.45);
-  --color-accent: #0d9488;
-  --color-accent-strong: #0f766e;
-  --color-sky: #38bdf8;
+  /* Premium Blue Tech Theme */
+  --color-ink: #f1f5f9;
+  --color-muted: #94a3b8;
+  --color-muted-strong: #cbd5e1;
+  --color-surface: rgba(30, 41, 59, 0.85);
+  --color-surface-soft: rgba(30, 41, 59, 0.75);
+  --color-surface-strong: rgba(30, 41, 59, 0.92);
+  --color-stroke: rgba(99, 102, 241, 0.25);
+  --color-stroke-strong: rgba(99, 102, 241, 0.4);
+  --color-accent: #3b82f6;
+  --color-accent-strong: #2563eb;
+  --color-sky: #06b6d4;
+  --color-purple: #8b5cf6;
   --color-amber: #f59e0b;
-  --color-warning: #b45309;
-  --color-danger: #b91c1c;
-  --color-shell: #f8f6f1;
+  --color-warning: #fbbf24;
+  --color-danger: #ef4444;
+  --color-shell: #0f172a;
+  /* Glow effects */
+  --glow-primary: rgba(59, 130, 246, 0.5);
+  --glow-secondary: rgba(139, 92, 246, 0.4);
 }
 
 body {
