@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { parseFullAddress, type ParsedAddress } from '../src/lib/address';
+import styles from './page.module.css';
 
 type DetectedMode = 'address' | 'address_soc' | 'soc' | 'none';
 const confirmationStorageKey = 'lookupConfirmation';
@@ -277,75 +278,74 @@ export default function HomePage() {
     if (!response) return null;
 
     return (
-      <div style={{ marginTop: 24 }} data-testid="results">
-        <h2>Results</h2>
-        <p data-testid="result-kind">Kind: {response.kind}</p>
+      <div className={styles.results} data-testid="results">
+        <div className={styles.resultsHeader}>
+          <h2 className={styles.resultsTitle}>Results</h2>
+          <span className={styles.pill} data-testid="result-kind">
+            Kind: {response.kind}
+          </span>
+        </div>
+
         {response.warnings?.length ? (
-          <div style={{ color: '#b45309' }} data-testid="warnings">
+          <div className={styles.warning} data-testid="warnings">
             Warnings: {response.warnings.join('; ')}
           </div>
         ) : null}
 
-        {response.explain?.summary?.length ? (
-          <div style={{ marginTop: 12 }}>
-            <h3>Explain</h3>
-            <ul data-testid="explain-list">
-              {response.explain.summary.map((entry: string, idx: number) => (
-                <li key={`${entry}-${idx}`}>{entry}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {response.geo?.geocode ? (
-          <div style={{ marginTop: 12 }}>
-            {response.geo.geocode.placeName ? (
-              <div data-testid="geo-place">Place: {response.geo.geocode.placeName}</div>
-            ) : null}
-            {response.geo.geocode.countyName ? (
-              <div data-testid="geo-county">County: {response.geo.geocode.countyName}</div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {response.geo?.area ? (
-          <div>
-            <strong>Area:</strong>{' '}
-            <span data-testid="area-name">{response.geo.area.areaName}</span> (
-            <span data-testid="area-code">{response.geo.area.areaCode}</span>)
-          </div>
-        ) : null}
-
-        {response.geo?.cbsa ? (
-          <div style={{ marginTop: 8 }} data-testid="cbsa">
-            <div>
-              CBSA: {response.geo.cbsa.cbsaName} ({response.geo.cbsa.cbsaCode})
+        <div className={styles.gridTwo}>
+          {response.explain?.summary?.length ? (
+            <div className={styles.card}>
+              <h3 className={styles.cardTitle}>Explain</h3>
+              <ul className={styles.list} data-testid="explain-list">
+                {response.explain.summary.map((entry: string, idx: number) => (
+                  <li key={`${entry}-${idx}`}>{entry}</li>
+                ))}
+              </ul>
             </div>
-            {response.geo.cbsa.isCrossState ? (
-              <div style={{ color: '#1f2937' }} data-testid="cbsa-cross">
-                Cross-State MSA: {response.geo.cbsa.statesInMsa.join(', ')}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+          ) : null}
+
+          {response.geo?.geocode || response.geo?.area || response.geo?.cbsa ? (
+            <div className={styles.card}>
+              <h3 className={styles.cardTitle}>Location</h3>
+              {response.geo?.geocode?.placeName ? (
+                <div className={styles.muted} data-testid="geo-place">
+                  Place: {response.geo.geocode.placeName}
+                </div>
+              ) : null}
+              {response.geo?.geocode?.countyName ? (
+                <div className={styles.muted} data-testid="geo-county">
+                  County: {response.geo.geocode.countyName}
+                </div>
+              ) : null}
+              {response.geo?.area ? (
+                <div className={styles.muted}>
+                  Area:{' '}
+                  <span data-testid="area-name">{response.geo.area.areaName}</span> (
+                  <span data-testid="area-code">{response.geo.area.areaCode}</span>)
+                </div>
+              ) : null}
+              {response.geo?.cbsa ? (
+                <div className={styles.muted} data-testid="cbsa">
+                  CBSA: {response.geo.cbsa.cbsaName} ({response.geo.cbsa.cbsaCode})
+                  {response.geo.cbsa.isCrossState ? (
+                    <div className={styles.muted} data-testid="cbsa-cross">
+                      Cross-State MSA: {response.geo.cbsa.statesInMsa.join(', ')}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
 
         {response.wages?.level1 ? (
-          <div style={{ marginTop: 12 }}>
-            <h3>Wage</h3>
+          <div className={styles.card}>
+            <h3 className={styles.cardTitle}>Wage</h3>
             {response.featureFlags?.wageQualityBanner && response.wages.dataQuality ? (
-              <div
-                style={{
-                  marginTop: 8,
-                  padding: 8,
-                  borderRadius: 6,
-                  background: '#fef3c7',
-                  color: '#92400e',
-                }}
-                data-testid="wage-quality-banner"
-              >
+              <div className={styles.warning} data-testid="wage-quality-banner">
                 Wage data quality flag detected.
                 {response.wages.dataQuality.notes?.length ? (
-                  <ul style={{ marginTop: 6 }}>
+                  <ul className={styles.list}>
                     {response.wages.dataQuality.notes.map((note: string, idx: number) => (
                       <li key={`${note}-${idx}`}>{note}</li>
                     ))}
@@ -354,7 +354,7 @@ export default function HomePage() {
               </div>
             ) : null}
             {response.wages.proposedSalary ? (
-              <div data-testid="proposed-salary">
+              <div data-testid="proposed-salary" className={styles.muted}>
                 Proposed: {response.wages.proposedSalary.amount} /{' '}
                 {response.wages.proposedSalary.unit}
               </div>
@@ -368,11 +368,11 @@ export default function HomePage() {
             <div data-testid="wage-l4-annual">L4 Annual: {response.wages.level4?.annual}</div>
             <div data-testid="wage-l4-hourly">L4 Hourly: {response.wages.level4?.hourly}</div>
             {response.wages.metWageLevel ? (
-              <div style={{ marginTop: 8 }} data-testid="met-wage-level">
+              <div data-testid="met-wage-level" className={styles.muted}>
                 Met Level: {response.wages.metWageLevel.metLevel} (
                 {response.wages.metWageLevel.basis})
                 {response.wages.metWageLevel.notes?.length ? (
-                  <ul>
+                  <ul className={styles.list}>
                     {response.wages.metWageLevel.notes.map((note: string, idx: number) => (
                       <li key={`${note}-${idx}`}>{note}</li>
                     ))}
@@ -384,55 +384,57 @@ export default function HomePage() {
         ) : null}
 
         {response.duties?.duties?.length ? (
-          <div style={{ marginTop: 12 }}>
-            <h3>Duties</h3>
-            <ul data-testid="duties-list">
+          <div className={styles.card}>
+            <h3 className={styles.cardTitle}>Duties</h3>
+            <ul className={styles.list} data-testid="duties-list">
               {response.duties.duties.map((duty: any, idx: number) => (
                 <li key={`${duty.text}-${idx}`}>{duty.text}</li>
               ))}
             </ul>
           </div>
         ) : response.duties?.note ? (
-          <div style={{ marginTop: 12 }} data-testid="duties-note">
+          <div className={styles.card} data-testid="duties-note">
             {response.duties.note}
           </div>
         ) : null}
 
         {response.extremes ? (
-          <div style={{ marginTop: 12 }}>
-            <h3>Extremes</h3>
-            <div>
-              <strong>Lowest</strong>
-              <ul data-testid="extremes-lowest">
-                {response.extremes.lowest.map((row: any) => (
-                  <li key={`low-${row.area.areaCode}`}>
-                    {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <strong>Highest</strong>
-              <ul data-testid="extremes-highest">
-                {response.extremes.highest.map((row: any) => (
-                  <li key={`high-${row.area.areaCode}`}>
-                    {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
-                  </li>
-                ))}
-              </ul>
+          <div className={styles.card}>
+            <h3 className={styles.cardTitle}>Extremes</h3>
+            <div className={styles.gridTwo}>
+              <div>
+                <strong>Lowest</strong>
+                <ul className={styles.list} data-testid="extremes-lowest">
+                  {response.extremes.lowest.map((row: any) => (
+                    <li key={`low-${row.area.areaCode}`}>
+                      {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <strong>Highest</strong>
+                <ul className={styles.list} data-testid="extremes-highest">
+                  {response.extremes.highest.map((row: any) => (
+                    <li key={`high-${row.area.areaCode}`}>
+                      {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
         ) : null}
 
         {response.kind === 'geo_needs_confirmation' && response.confirmation?.suggestions ? (
-          <div style={{ marginTop: 12 }}>
-            <h3>Confirmation Needed</h3>
-            <ul data-testid="confirmation-list">
+          <div className={styles.card}>
+            <h3 className={styles.cardTitle}>Confirmation Needed</h3>
+            <ul className={styles.list} data-testid="confirmation-list">
               {response.confirmation.suggestions.map((entry: any) => (
                 <li key={`${entry.areaCode}-${entry.countyFips}`}>
                   {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
                   <button
-                    style={{ marginLeft: 8 }}
+                    className={styles.chipButton}
                     type="button"
                     onClick={() => resendWithOverride(entry.areaCode)}
                   >
@@ -441,11 +443,11 @@ export default function HomePage() {
                 </li>
               ))}
             </ul>
-            <div style={{ marginTop: 12 }}>
-              <label>
-                Search candidates
+            <div className={styles.formGrid}>
+              <label className={styles.field}>
+                <span className={styles.label}>Search candidates</span>
                 <input
-                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
+                  className={styles.input}
                   value={candidateQuery}
                   onChange={(event) => setCandidateQuery(event.target.value)}
                   placeholder="Middlesex"
@@ -454,25 +456,25 @@ export default function HomePage() {
               </label>
               <button
                 type="button"
+                className={styles.secondaryButton}
                 onClick={() => runCandidateSearch()}
                 disabled={candidateLoading}
-                style={{ marginTop: 8 }}
                 data-testid="candidate-search-button"
               >
                 {candidateLoading ? 'Searching...' : 'Search'}
               </button>
               {candidateError ? (
-                <div style={{ color: '#b91c1c', marginTop: 8 }} data-testid="candidate-error">
+                <div className={styles.error} data-testid="candidate-error">
                   {candidateError}
                 </div>
               ) : null}
               {candidateResults.length ? (
-                <ul style={{ marginTop: 8 }} data-testid="candidate-results">
+                <ul className={styles.list} data-testid="candidate-results">
                   {candidateResults.map((entry) => (
                     <li key={`${entry.areaCode}-${entry.countyFips}`}>
                       {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
                       <button
-                        style={{ marginLeft: 8 }}
+                        className={styles.chipButton}
                         type="button"
                         onClick={() => resendWithOverride(entry.areaCode)}
                       >
@@ -491,205 +493,224 @@ export default function HomePage() {
 
   if (!authMode) {
     return (
-      <main style={{ maxWidth: 880, margin: '32px auto', padding: '0 16px' }}>
-        <h1>H1B SOC</h1>
-        <p>Loading...</p>
+      <main className={styles.page}>
+        <div className={styles.background} aria-hidden="true">
+          <div className={`${styles.orb} ${styles.orbPrimary}`} />
+          <div className={`${styles.orb} ${styles.orbSecondary}`} />
+          <div className={`${styles.orb} ${styles.orbAccent}`} />
+        </div>
+        <div className={styles.container}>
+          <div className={styles.header}>
+            <div className={styles.brand}>
+              <h1 className={styles.title}>H1B SOC</h1>
+              <p className={styles.subtitle}>Loading...</p>
+            </div>
+          </div>
+        </div>
       </main>
     );
   }
 
   return (
-    <main style={{ maxWidth: 880, margin: '32px auto', padding: '0 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ marginBottom: 8 }}>H1B SOC</h1>
-          <p>Query wage and SOC data with address and SOC inputs.</p>
-        </div>
-        {authMode === 'invite' && authEmail ? (
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ marginBottom: 8 }}>Signed in as {authEmail}</div>
-            <button type="button" onClick={handleLogout}>
-              Sign Out
-            </button>
-          </div>
-        ) : authMode === 'public' ? (
-          <div style={{ textAlign: 'right' }}>Public access</div>
-        ) : null}
+    <main className={styles.page}>
+      <div className={styles.background} aria-hidden="true">
+        <div className={`${styles.orb} ${styles.orbPrimary}`} />
+        <div className={`${styles.orb} ${styles.orbSecondary}`} />
+        <div className={`${styles.orb} ${styles.orbAccent}`} />
       </div>
-
-      <section style={{ marginTop: 24 }}>
-        {modeLabel ? (
-          <div
-            style={{ marginBottom: 12, color: '#1f2937', fontWeight: 600 }}
-            data-testid="detected-mode"
-          >
-            {modeLabel}
+      <div className={styles.container}>
+        <div className={styles.header}>
+          <div className={styles.brand}>
+            <h1 className={styles.title}>H1B SOC</h1>
+            <p className={styles.subtitle}>Query wage and SOC data with address and SOC inputs.</p>
           </div>
-        ) : (
-          <div style={{ marginBottom: 12, color: '#6b7280' }} data-testid="empty-hint">
-            Paste an address, enter a SOC code, or both.
-          </div>
-        )}
-
-        <label style={{ display: 'block', marginBottom: 12 }}>
-          Address
-          <textarea
-            style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-            rows={3}
-            value={addressText}
-            onChange={(event) => setAddressText(event.target.value)}
-            placeholder="123 Main St, City, ST 12345"
-            data-testid="address-input"
-          />
-          <div style={{ marginTop: 8 }}>
-            <button
-              type="button"
-              onClick={() => setShowAddressDetails((prev) => !prev)}
-              data-testid="address-details-toggle"
-            >
-              {showAddressDetails ? 'Hide address details' : 'Edit address details'}
-            </button>
-          </div>
-        </label>
-
-        {showAddressDetails && addressDetails ? (
-          <div
-            style={{ border: '1px dashed #ccc', padding: 12, marginBottom: 12 }}
-            data-testid="address-details"
-          >
-            <div style={{ marginBottom: 8 }} data-testid="address-confidence">
-              Parsed confidence: {addressDetails.confidence}
+          {authMode === 'invite' && authEmail ? (
+            <div className={styles.authCard}>
+              <div className={styles.authLabel}>Signed in as</div>
+              <div className={styles.authValue}>{authEmail}</div>
+              <button type="button" className={styles.ghostButton} onClick={handleLogout}>
+                Sign Out
+              </button>
             </div>
-            {addressDetails.warnings.length ? (
-              <div style={{ color: '#b45309', marginBottom: 8 }} data-testid="address-warnings">
-                {addressDetails.warnings.join('; ')}
-              </div>
-            ) : null}
-            <div style={{ display: 'grid', gap: 10 }}>
-              <label>
-                Line 1
-                <input
-                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-                  value={addressDetails.line1}
-                  onChange={(event) => updateAddressDetail('line1', event.target.value)}
-                  data-testid="address-line1"
-                />
-              </label>
-              <label>
-                Line 2
-                <input
-                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-                  value={addressDetails.line2 ?? ''}
-                  onChange={(event) => updateAddressDetail('line2', event.target.value)}
-                  data-testid="address-line2"
-                />
-              </label>
-              <label>
-                City
-                <input
-                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-                  value={addressDetails.city}
-                  onChange={(event) => updateAddressDetail('city', event.target.value)}
-                  data-testid="address-city"
-                />
-              </label>
-              <label>
-                State
-                <input
-                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-                  value={addressDetails.state}
-                  onChange={(event) => updateAddressDetail('state', event.target.value)}
-                  data-testid="address-state"
-                />
-              </label>
-              <label>
-                ZIP
-                <input
-                  style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-                  value={addressDetails.zip ?? ''}
-                  onChange={(event) => updateAddressDetail('zip', event.target.value)}
-                  data-testid="address-zip"
-                />
-              </label>
-            </div>
-          </div>
-        ) : null}
-
-        <label style={{ display: 'block', marginBottom: 12 }}>
-          SOC Code
-          <input
-            style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-            value={socCode}
-            onChange={(event) => setSocCode(event.target.value)}
-            placeholder="15-1252"
-            data-testid="soc-input"
-          />
-          <div style={{ marginTop: 6, fontSize: 12, color: '#555' }} data-testid="soc-help">
-            Wages use SOC-6; duties use O*NET 8-digit with fallback.
-          </div>
-          {socSuffixMatch ? (
-            <div
-              style={{ marginTop: 6, fontSize: 12, color: '#7c2d12' }}
-              data-testid="soc-suffix-note"
-            >
-              Using {socSuffixMatch[1]} for wages (O*NET suffix .{socSuffixMatch[2]} ignored).
+          ) : authMode === 'public' ? (
+            <div className={styles.authCard}>
+              <div className={styles.authLabel}>Access</div>
+              <div className={styles.authValue}>Public access</div>
             </div>
           ) : null}
-        </label>
+        </div>
 
-        {detectedMode === 'address_soc' && (
-          <div style={{ display: 'grid', gap: 12, marginBottom: 12 }}>
-            <label>
-              Proposed Salary
-              <input
-                style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-                type="number"
-                value={salaryAmount}
-                onChange={(event) => setSalaryAmount(event.target.value)}
-                placeholder="120000"
-                data-testid="salary-input"
-              />
-            </label>
-            <label>
-              Salary Unit
-              <select
-                style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-                value={salaryUnit}
-                onChange={(event) =>
-                  setSalaryUnit(event.target.value === 'hour' ? 'hour' : 'year')
-                }
-                data-testid="salary-unit"
-              >
-                <option value="year">Year</option>
-                <option value="hour">Hour</option>
-              </select>
-            </label>
-            {salaryWarning ? (
-              <div style={{ color: '#b45309' }} data-testid="salary-warning">
-                Salary looks low for annual input. Did you mean hourly?
+        <section className={styles.section}>
+          <div className={styles.card}>
+            {modeLabel ? (
+              <div className={styles.modeBadge} data-testid="detected-mode">
+                {modeLabel}
               </div>
-            ) : null}
+            ) : (
+              <div className={styles.emptyHint} data-testid="empty-hint">
+                Paste an address, enter a SOC code, or both.
+              </div>
+            )}
+
+            <div className={styles.formGrid}>
+              <label className={styles.field}>
+                <span className={styles.label}>Address</span>
+                <textarea
+                  className={styles.textarea}
+                  rows={3}
+                  value={addressText}
+                  onChange={(event) => setAddressText(event.target.value)}
+                  placeholder="123 Main St, City, ST 12345"
+                  data-testid="address-input"
+                />
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setShowAddressDetails((prev) => !prev)}
+                  data-testid="address-details-toggle"
+                >
+                  {showAddressDetails ? 'Hide address details' : 'Edit address details'}
+                </button>
+              </label>
+
+              {showAddressDetails && addressDetails ? (
+                <div className={styles.detailCard} data-testid="address-details">
+                  <div className={styles.helper} data-testid="address-confidence">
+                    Parsed confidence: {addressDetails.confidence}
+                  </div>
+                  {addressDetails.warnings.length ? (
+                    <div className={styles.warning} data-testid="address-warnings">
+                      {addressDetails.warnings.join('; ')}
+                    </div>
+                  ) : null}
+                  <div className={styles.formGrid}>
+                    <label className={styles.field}>
+                      <span className={styles.label}>Line 1</span>
+                      <input
+                        className={styles.input}
+                        value={addressDetails.line1}
+                        onChange={(event) => updateAddressDetail('line1', event.target.value)}
+                        data-testid="address-line1"
+                      />
+                    </label>
+                    <label className={styles.field}>
+                      <span className={styles.label}>Line 2</span>
+                      <input
+                        className={styles.input}
+                        value={addressDetails.line2 ?? ''}
+                        onChange={(event) => updateAddressDetail('line2', event.target.value)}
+                        data-testid="address-line2"
+                      />
+                    </label>
+                    <div className={styles.inlineRow}>
+                      <label className={styles.field}>
+                        <span className={styles.label}>City</span>
+                        <input
+                          className={styles.input}
+                          value={addressDetails.city}
+                          onChange={(event) => updateAddressDetail('city', event.target.value)}
+                          data-testid="address-city"
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.label}>State</span>
+                        <input
+                          className={styles.input}
+                          value={addressDetails.state}
+                          onChange={(event) => updateAddressDetail('state', event.target.value)}
+                          data-testid="address-state"
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.label}>ZIP</span>
+                        <input
+                          className={styles.input}
+                          value={addressDetails.zip ?? ''}
+                          onChange={(event) => updateAddressDetail('zip', event.target.value)}
+                          data-testid="address-zip"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <label className={styles.field}>
+                <span className={styles.label}>SOC Code</span>
+                <input
+                  className={styles.input}
+                  value={socCode}
+                  onChange={(event) => setSocCode(event.target.value)}
+                  placeholder="15-1252"
+                  data-testid="soc-input"
+                />
+                <span className={styles.helper} data-testid="soc-help">
+                  Wages use SOC-6; duties use O*NET 8-digit with fallback.
+                </span>
+                {socSuffixMatch ? (
+                  <span className={styles.hintStrong} data-testid="soc-suffix-note">
+                    Using {socSuffixMatch[1]} for wages (O*NET suffix .{socSuffixMatch[2]} ignored).
+                  </span>
+                ) : null}
+              </label>
+
+              {detectedMode === 'address_soc' ? (
+                <div className={styles.inlineRow}>
+                  <label className={styles.field}>
+                    <span className={styles.label}>Proposed Salary</span>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      value={salaryAmount}
+                      onChange={(event) => setSalaryAmount(event.target.value)}
+                      placeholder="120000"
+                      data-testid="salary-input"
+                    />
+                    {salaryWarning ? (
+                      <span className={styles.warning} data-testid="salary-warning">
+                        Salary looks low for annual input. Did you mean hourly?
+                      </span>
+                    ) : null}
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.label}>Salary Unit</span>
+                    <select
+                      className={styles.select}
+                      value={salaryUnit}
+                      onChange={(event) =>
+                        setSalaryUnit(event.target.value === 'hour' ? 'hour' : 'year')
+                      }
+                      data-testid="salary-unit"
+                    >
+                      <option value="year">Year</option>
+                      <option value="hour">Hour</option>
+                    </select>
+                  </label>
+                </div>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => runLookup()}
+              disabled={loading || detectedMode === 'none'}
+              data-testid="lookup-button"
+            >
+              {loading ? 'Loading...' : submitLabel}
+            </button>
+
+            {error ? <div className={styles.error}>{error}</div> : null}
           </div>
-        )}
+        </section>
 
-        <button
-          type="button"
-          onClick={() => runLookup()}
-          disabled={loading || detectedMode === 'none'}
-          data-testid="lookup-button"
-        >
-          {loading ? 'Loading...' : submitLabel}
-        </button>
+        {renderResults()}
 
-        {error ? <div style={{ color: '#b91c1c', marginTop: 12 }}>{error}</div> : null}
-      </section>
-
-      {renderResults()}
-
-      <section style={{ marginTop: 32, color: '#444' }}>
-        <strong>Disclaimer:</strong> Verify against official OFLC and O*NET sources. Not legal
-        advice.
-      </section>
+        <section className={styles.disclaimer}>
+          <strong>Disclaimer:</strong> Verify against official OFLC and O*NET sources. Not legal
+          advice.
+        </section>
+      </div>
     </main>
   );
 }
