@@ -715,23 +715,25 @@ export default function HomePage() {
 
             <div className={styles.formGrid}>
               <label className={styles.field}>
-                <span className={styles.label}>Address</span>
+                <div className={styles.fieldHeader}>
+                  <span className={styles.label}>Address</span>
+                  <button
+                    type="button"
+                    className={`${styles.secondaryButton} ${styles.inlineButton}`}
+                    onClick={() => setShowAddressDetails((prev) => !prev)}
+                    data-testid="address-details-toggle"
+                  >
+                    {showAddressDetails ? 'Hide address details' : 'Edit address details'}
+                  </button>
+                </div>
                 <textarea
-                  className={styles.textarea}
-                  rows={3}
+                  className={`${styles.textarea} ${styles.addressTextarea}`}
+                  rows={2}
                   value={addressText}
                   onChange={(event) => setAddressText(event.target.value)}
                   placeholder="123 Main St, City, ST 12345"
                   data-testid="address-input"
                 />
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => setShowAddressDetails((prev) => !prev)}
-                  data-testid="address-details-toggle"
-                >
-                  {showAddressDetails ? 'Hide address details' : 'Edit address details'}
-                </button>
               </label>
 
               {showAddressDetails && addressDetails ? (

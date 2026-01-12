@@ -175,7 +175,15 @@
   background: var(--color-surface-soft);
   border: 1px dashed var(--color-stroke-strong);
   border-radius: 16px;
-  padding: 16px;
+  padding: 12px;
+}
+
+.detailCard .formGrid {
+  gap: 12px;
+}
+
+.detailCard .inlineRow {
+  gap: 12px;
 }
 
 .modeBadge {
@@ -202,6 +210,12 @@
 .formGrid {
   display: grid;
   gap: 18px;
+}
+
+.fieldHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .field {
@@ -231,6 +245,11 @@
 .textarea {
   min-height: 120px;
   resize: vertical;
+}
+
+.addressTextarea {
+  min-height: 84px;
+  line-height: 1.5;
 }
 
 .input:focus,
@@ -272,6 +291,14 @@
   cursor: pointer;
   font-size: 12px;
   transition: border 0.2s ease, color 0.2s ease;
+}
+
+.inlineButton {
+  align-self: center;
+  padding: 4px 10px;
+  border-style: solid;
+  font-size: 11px;
+  letter-spacing: 0.01em;
 }
 
 .secondaryButton:hover {
