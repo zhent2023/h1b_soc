@@ -142,6 +142,16 @@
   margin-bottom: 10px;
 }
 
+.link {
+  color: var(--color-accent-strong);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
 .ghostButton {
   padding: 6px 12px;
   border-radius: 999px;
@@ -160,6 +170,33 @@
 
 .section {
   margin-top: 32px;
+}
+
+.toast {
+  margin-top: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(14, 116, 144, 0.12);
+  border: 1px solid rgba(14, 116, 144, 0.3);
+  color: var(--color-ink);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.toastIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(14, 116, 144, 0.18);
+  color: var(--color-accent-strong);
+  font-size: 12px;
 }
 
 .card {
@@ -542,6 +579,22 @@
 
 .loginCard {
   min-height: 100%;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-muted-strong);
+}
+
+.checkboxInput {
+  margin-top: 3px;
+}
+
+.checkboxText {
+  line-height: 1.5;
 }
 
 .fullWidth {

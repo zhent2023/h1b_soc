@@ -1,0 +1,8 @@
+ALTER TABLE "User" ADD COLUMN "fullName" TEXT;
+ALTER TABLE "User" ADD COLUMN "lawFirm" TEXT;
+ALTER TABLE "User" ADD COLUMN "isAttorneyConfirmed" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN "marketingConsent" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN "agreedAt" TIMESTAMP(3);
+ALTER TABLE "User" ADD COLUMN "agreedIp" TEXT;
+ALTER TABLE "User" ADD COLUMN "marketingConsentAt" TIMESTAMP(3);
+ALTER TABLE "User" ADD COLUMN "marketingConsentIp" TEXT;

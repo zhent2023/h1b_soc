@@ -28,6 +28,7 @@ export default function HomePage() {
   const [authMode, setAuthMode] = useState<'public' | 'invite' | null>(null);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [dutiesCopied, setDutiesCopied] = useState(false);
+  const [welcomeName, setWelcomeName] = useState<string | null>(null);
 
   const trimmedAddress = addressText.trim();
   const trimmedSoc = socCode.trim();
@@ -145,6 +146,15 @@ export default function HomePage() {
     } catch {
       sessionStorage.removeItem(confirmationStorageKey);
     }
+  }, []);
+
+  useEffect(() => {
+    const name = sessionStorage.getItem('welcomeName');
+    if (!name) return;
+    setWelcomeName(name);
+    sessionStorage.removeItem('welcomeName');
+    const timer = window.setTimeout(() => setWelcomeName(null), 4000);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -700,6 +710,13 @@ export default function HomePage() {
             </div>
           ) : null}
         </div>
+
+        {welcomeName ? (
+          <div className={styles.toast} role="status" data-testid="welcome-toast">
+            <span className={styles.toastIcon}>✓</span>
+            <span>Welcome to H1B Wage Lookup, {welcomeName}!</span>
+          </div>
+        ) : null}
 
         <section className={styles.section}>
           <div className={styles.card}>
