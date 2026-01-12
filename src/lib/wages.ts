@@ -107,13 +107,39 @@ function appendState(label: string | null | undefined, stateAb: string | null | 
   return `${label}, ${stateAb}`;
 }
 
+function normalizeLabel(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function splitAreaTokens(areaName: string) {
+  return areaName
+    .split(/[-,]/)
+    .map((token) => normalizeLabel(token))
+    .filter((token) => token.length > 0);
+}
+
+function selectMatchingName(names: string[], areaName: string) {
+  if (!names.length) return null;
+  const tokens = splitAreaTokens(areaName);
+  if (!tokens.length) {
+    return names[0] ?? null;
+  }
+  const normalized = names.map((name) => ({ name, normalized: normalizeLabel(name) }));
+  const direct = normalized.find((entry) =>
+    tokens.some((token) => entry.normalized.includes(token)),
+  );
+  return (direct ?? normalized[0] ?? null)?.name ?? null;
+}
+
 function buildDisplayName(params: {
   areaName: string;
   stateAb?: string | null;
-  countyName?: string | null;
-  townName?: string | null;
+  countyNames: string[];
+  townNames: string[];
 }) {
-  const { areaName, stateAb, countyName, townName } = params;
+  const { areaName, stateAb, countyNames, townNames } = params;
+  const countyName = selectMatchingName(countyNames, areaName);
+  const townName = selectMatchingName(townNames, areaName);
   const townLabel = appendState(townName ?? null, stateAb ?? null);
   const areaLabel = appendState(areaName, stateAb ?? null);
   if (countyName && townLabel) {
@@ -280,25 +306,25 @@ export async function getSocExtremes(params: {
       : [];
 
   type AreaHint = {
-    countyName?: string | null;
-    townName?: string | null;
+    countyNames: string[];
+    townNames: string[];
     stateAb: string | null;
   };
   const areaHints = new Map<string, AreaHint>();
   for (const row of countyRows) {
     let entry = areaHints.get(row.areaCode);
     if (!entry) {
-      entry = { stateAb: row.stateAb ?? null };
+      entry = { stateAb: row.stateAb ?? null, countyNames: [], townNames: [] };
       areaHints.set(row.areaCode, entry);
     }
     if (!entry.stateAb && row.stateAb) {
       entry.stateAb = row.stateAb;
     }
-    if (row.matchKind === 'county' && !entry.countyName) {
-      entry.countyName = row.countyTownName;
+    if (row.matchKind === 'county' && !entry.countyNames.includes(row.countyTownName)) {
+      entry.countyNames.push(row.countyTownName);
     }
-    if (row.matchKind === 'town' && !entry.townName) {
-      entry.townName = row.countyTownName;
+    if (row.matchKind === 'town' && !entry.townNames.includes(row.countyTownName)) {
+      entry.townNames.push(row.countyTownName);
     }
   }
 
@@ -318,8 +344,8 @@ export async function getSocExtremes(params: {
       const displayName = buildDisplayName({
         areaName: row.area.areaName,
         stateAb: row.area.stateAb ?? hints?.stateAb ?? null,
-        countyName: hints?.countyName ?? null,
-        townName: hints?.townName ?? null,
+        countyNames: hints?.countyNames ?? [],
+        townNames: hints?.townNames ?? [],
       });
       return {
         area: mapArea(row.area, { displayName }),
@@ -341,8 +367,8 @@ export async function getSocExtremes(params: {
       const displayName = buildDisplayName({
         areaName: row.area.areaName,
         stateAb: row.area.stateAb ?? hints?.stateAb ?? null,
-        countyName: hints?.countyName ?? null,
-        townName: hints?.townName ?? null,
+        countyNames: hints?.countyNames ?? [],
+        townNames: hints?.townNames ?? [],
       });
       return {
         area: mapArea(row.area, { displayName }),
