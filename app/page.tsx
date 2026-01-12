@@ -293,47 +293,59 @@ export default function HomePage() {
         ) : null}
 
         <div className={styles.gridTwo}>
-          {response.explain?.summary?.length ? (
-            <div className={styles.card}>
-              <h3 className={styles.cardTitle}>Explain</h3>
-              <ul className={styles.list} data-testid="explain-list">
-                {response.explain.summary.map((entry: string, idx: number) => (
-                  <li key={`${entry}-${idx}`}>{entry}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
           {response.geo?.geocode || response.geo?.area || response.geo?.cbsa ? (
-            <div className={styles.card}>
-              <h3 className={styles.cardTitle}>Location</h3>
-              {response.geo?.geocode?.placeName ? (
-                <div className={styles.muted} data-testid="geo-place">
-                  Place: {response.geo.geocode.placeName}
-                </div>
-              ) : null}
-              {response.geo?.geocode?.countyName ? (
-                <div className={styles.muted} data-testid="geo-county">
-                  County: {response.geo.geocode.countyName}
-                </div>
-              ) : null}
-              {response.geo?.area ? (
-                <div className={styles.muted}>
-                  Area:{' '}
-                  <span data-testid="area-name">{response.geo.area.areaName}</span> (
-                  <span data-testid="area-code">{response.geo.area.areaCode}</span>)
-                </div>
-              ) : null}
+            <div className={`${styles.card} ${styles.primaryCard}`}>
+              <h3 className={styles.cardTitle}>County / Township</h3>
+              <div className={styles.locationGrid}>
+                {response.geo?.geocode?.placeName ? (
+                  <div className={styles.stat}>
+                    <div className={styles.statLabel}>Town / Place</div>
+                    <div className={styles.statValue} data-testid="geo-place">
+                      {response.geo.geocode.placeName}
+                    </div>
+                  </div>
+                ) : null}
+                {response.geo?.geocode?.countyName ? (
+                  <div className={styles.stat}>
+                    <div className={styles.statLabel}>County</div>
+                    <div className={styles.statValue} data-testid="geo-county">
+                      {response.geo.geocode.countyName}
+                    </div>
+                  </div>
+                ) : null}
+                {response.geo?.area ? (
+                  <div className={styles.stat}>
+                    <div className={styles.statLabel}>Wage Area</div>
+                    <div className={styles.statValue}>
+                      <span data-testid="area-name">{response.geo.area.areaName}</span>
+                    </div>
+                    <div className={styles.statMeta}>
+                      Area Code: <span data-testid="area-code">{response.geo.area.areaCode}</span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
               {response.geo?.cbsa ? (
-                <div className={styles.muted} data-testid="cbsa">
+                <div className={styles.cbsaNote} data-testid="cbsa">
                   CBSA: {response.geo.cbsa.cbsaName} ({response.geo.cbsa.cbsaCode})
                   {response.geo.cbsa.isCrossState ? (
-                    <div className={styles.muted} data-testid="cbsa-cross">
+                    <div data-testid="cbsa-cross">
                       Cross-State MSA: {response.geo.cbsa.statesInMsa.join(', ')}
                     </div>
                   ) : null}
                 </div>
               ) : null}
+            </div>
+          ) : null}
+
+          {response.explain?.summary?.length ? (
+            <div className={`${styles.card} ${styles.secondaryCard}`}>
+              <h3 className={styles.cardTitle}>Match Details</h3>
+              <ul className={styles.list} data-testid="explain-list">
+                {response.explain.summary.map((entry: string, idx: number) => (
+                  <li key={`${entry}-${idx}`}>{entry}</li>
+                ))}
+              </ul>
             </div>
           ) : null}
         </div>
