@@ -12,7 +12,7 @@
     "db:reset": "prisma migrate reset --force",
     "db:seed": "prisma db seed",
     "db:query": "tsx scripts/db/query.ts",
-    "test": "vitest run && pnpm typecheck",
+    "test": "vitest run && pnpm typecheck && pnpm lint && pnpm vercel-build",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration --passWithNoTests",
     "typecheck": "tsc --noEmit",
