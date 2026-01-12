@@ -100,8 +100,8 @@ test('soc only mode extremes are stable', async ({ page }) => {
   const second = await runLookup();
   const third = await runLookup();
 
-  expect(first.lowest.length).toBe(5);
-  expect(first.highest.length).toBe(5);
+  expect(first.lowest.length).toBe(8);
+  expect(first.highest.length).toBe(8);
   expect(second.lowest).toEqual(first.lowest);
   expect(second.highest).toEqual(first.highest);
   expect(third.lowest).toEqual(first.lowest);

@@ -249,7 +249,7 @@ export async function lookup(
             isAcwia,
             socCode: soc6,
             metric: 'l1Annual',
-            n: 5,
+            n: 8,
           })
         : undefined;
       return {
@@ -315,7 +315,7 @@ export async function lookup(
       isAcwia,
       socCode: soc6,
       metric: 'l1Annual',
-      n: 5,
+      n: 8,
     });
 
     const proposedSalary =
@@ -389,7 +389,7 @@ export async function lookup(
     isAcwia,
     socCode: soc6 ?? '',
     metric: 'l1Annual',
-    n: 5,
+    n: 8,
   });
 
   const duties = soc6 ? await resolveDuties(soc6) : { duties: [] };

@@ -520,7 +520,7 @@ export default function HomePage() {
           </div>
 
           <div className={`${styles.card} ${styles.spanTwo}`}>
-            <h3 className={styles.cardTitle}>Extremes</h3>
+            <h3 className={styles.cardTitle}>Location extremes for Level 1 prevailing wages</h3>
             {hasExtremes ? (
               <table className={styles.table} data-testid="extremes-table">
                 <thead>
