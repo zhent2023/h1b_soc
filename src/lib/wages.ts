@@ -138,13 +138,9 @@ function buildDisplayName(params: {
   townNames: string[];
 }) {
   const { areaName, stateAb, countyNames, townNames } = params;
-  const countyName = selectMatchingName(countyNames, areaName);
-  const townName = selectMatchingName(townNames, areaName);
-  const townLabel = appendState(townName ?? null, stateAb ?? null);
+  const countyName =
+    selectMatchingName(countyNames, areaName) ?? selectMatchingName(townNames, areaName);
   const areaLabel = appendState(areaName, stateAb ?? null);
-  if (countyName && townLabel) {
-    return `${countyName} - ${townLabel}`;
-  }
   if (countyName && areaLabel) {
     return `${countyName} - ${areaLabel}`;
   }

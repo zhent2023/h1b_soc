@@ -278,11 +278,14 @@ export default function HomePage() {
     if (!response) return null;
 
     const countyName = response.geo?.geocode?.countyName ?? null;
-    const placeName = response.geo?.geocode?.placeName ?? response.geo?.area?.areaName ?? null;
+    const wageAreaName = response.geo?.area?.areaName ?? null;
+    const placeName = response.geo?.geocode?.placeName ?? null;
     const stateAb = response.geo?.geocode?.stateAb ?? response.geo?.area?.stateAb ?? null;
-    let townshipLabel = placeName ? String(placeName) : null;
-    if (townshipLabel && stateAb && !townshipLabel.includes(',') && !townshipLabel.includes(stateAb)) {
-      townshipLabel = `${townshipLabel}, ${stateAb}`;
+    let townshipLabel = wageAreaName ?? placeName;
+    if (!wageAreaName && townshipLabel && stateAb) {
+      if (!townshipLabel.includes(',') && !townshipLabel.includes(stateAb)) {
+        townshipLabel = `${townshipLabel}, ${stateAb}`;
+      }
     }
     const hasGeo = Boolean(response.geo?.geocode || response.geo?.area || response.geo?.cbsa);
     const hasWages = Boolean(response.wages?.level1);
