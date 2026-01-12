@@ -288,6 +288,14 @@ export default function HomePage() {
     const hasWages = Boolean(response.wages?.level1);
     const hasDuties = Boolean(response.duties?.duties?.length);
     const hasExtremes = Boolean(response.extremes);
+    const formatAreaLabel = (area?: {
+      displayName?: string | null;
+      areaName?: string | null;
+      stateAb?: string | null;
+    }) => {
+      if (!area) return 'Unknown area';
+      return area.displayName || area.areaName || 'Unknown area';
+    };
 
     return (
       <div className={styles.results} data-testid="results">
@@ -324,38 +332,15 @@ export default function HomePage() {
                     </>
                   ) : null}
                 </div>
-                <div className={styles.locationGrid}>
-                  {response.geo?.area ? (
-                    <div className={styles.stat}>
-                      <div className={styles.statLabel}>Wage Area</div>
-                      <div className={styles.statValue}>
-                        <span data-testid="area-name">{response.geo.area.areaName}</span>
-                      </div>
-                      <div className={styles.statMeta}>
-                        Area Code: <span data-testid="area-code">{response.geo.area.areaCode}</span>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-                {response.geo?.cbsa ? (
-                  <div className={styles.cbsaNote} data-testid="cbsa">
-                    CBSA: {response.geo.cbsa.cbsaName} ({response.geo.cbsa.cbsaCode})
-                    {response.geo.cbsa.isCrossState ? (
-                      <div data-testid="cbsa-cross">
-                        Cross-State MSA: {response.geo.cbsa.statesInMsa.join(', ')}
-                      </div>
-                    ) : null}
-                  </div>
+                {response.geo?.area ? (
+                  <span className={styles.srOnly} data-testid="area-name">
+                    {response.geo.area.areaName}
+                  </span>
                 ) : null}
-                {response.explain?.summary?.length ? (
-                  <div className={styles.matchDetails}>
-                    <div className={styles.matchDetailsTitle}>Match details</div>
-                    <ul className={styles.matchDetailsList} data-testid="explain-list">
-                      {response.explain.summary.map((entry: string, idx: number) => (
-                        <li key={`${entry}-${idx}`}>{entry}</li>
-                      ))}
-                    </ul>
-                  </div>
+                {response.geo?.area ? (
+                  <span className={styles.srOnly} data-testid="area-code">
+                    {response.geo.area.areaCode}
+                  </span>
                 ) : null}
               </>
             ) : (
@@ -452,7 +437,7 @@ export default function HomePage() {
                   <ul className={styles.list} data-testid="extremes-lowest">
                     {response.extremes.lowest.map((row: any) => (
                       <li key={`low-${row.area.areaCode}`}>
-                        {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
+                        {formatAreaLabel(row.area)}: {row.level1.annual}
                       </li>
                     ))}
                   </ul>
@@ -462,7 +447,7 @@ export default function HomePage() {
                   <ul className={styles.list} data-testid="extremes-highest">
                     {response.extremes.highest.map((row: any) => (
                       <li key={`high-${row.area.areaCode}`}>
-                        {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
+                        {formatAreaLabel(row.area)}: {row.level1.annual}
                       </li>
                     ))}
                   </ul>
@@ -477,6 +462,16 @@ export default function HomePage() {
             )}
           </div>
         </div>
+
+        {response.explain?.summary?.length ? (
+          <div className={styles.srOnly}>
+            <ul data-testid="explain-list">
+              {response.explain.summary.map((entry: string, idx: number) => (
+                <li key={`${entry}-${idx}`}>{entry}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {response.kind === 'geo_needs_confirmation' && response.confirmation?.suggestions ? (
           <div className={styles.card}>

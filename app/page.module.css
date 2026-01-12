@@ -364,7 +364,7 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--color-ink);
@@ -373,7 +373,7 @@
 .primaryCounty {
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .primaryDivider {
@@ -513,13 +513,24 @@
 
 .cardTitle {
   margin: 0 0 8px;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
 }
 
 .cardHint {
   font-size: 13px;
   color: var(--color-muted);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
 }
 
 .disclaimer {
