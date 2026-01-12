@@ -4,6 +4,8 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import styles from '../page.module.css';
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -55,35 +57,58 @@ export default function LoginPage() {
   };
 
   return (
-    <main style={{ maxWidth: 560, margin: '40px auto', padding: '0 16px' }}>
-      <h1>Sign In</h1>
-      <p>Use the credentials provided by your administrator.</p>
-      <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, marginTop: 20 }}>
-        <label>
-          Email
-          <input
-            style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Password
-          <input
-            style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </label>
-        <button type="submit" style={{ padding: '10px 14px', cursor: 'pointer' }}>
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-        {error ? <span style={{ color: '#b91c1c' }}>{error}</span> : null}
-      </form>
+    <main className={styles.page}>
+      <div className={styles.background} aria-hidden="true">
+        <div className={`${styles.orb} ${styles.orbPrimary}`} />
+        <div className={`${styles.orb} ${styles.orbSecondary}`} />
+        <div className={`${styles.orb} ${styles.orbAccent}`} />
+      </div>
+      <div className={styles.container}>
+        <div className={styles.brand}>
+          <h1 className={styles.title}>H1B SOC</h1>
+          <p className={styles.subtitle}>Secure access to wage and SOC intelligence.</p>
+        </div>
+        <section className={styles.loginGrid}>
+          <div>
+            <h2 className={styles.loginTitle}>Sign in</h2>
+            <p className={styles.subtitle}>Use the credentials provided by your administrator.</p>
+            <div className={styles.loginMeta}>
+              Invite-only access. For help, contact your admin.
+            </div>
+          </div>
+          <div className={`${styles.card} ${styles.loginCard}`}>
+            <form onSubmit={onSubmit} className={styles.formGrid}>
+              <label className={styles.field}>
+                <span className={styles.label}>Email</span>
+                <input
+                  className={styles.input}
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                />
+              </label>
+              <label className={styles.field}>
+                <span className={styles.label}>Password</span>
+                <input
+                  className={styles.input}
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+              </label>
+              <button
+                type="submit"
+                className={`${styles.primaryButton} ${styles.fullWidth}`}
+              >
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+              {error ? <span className={styles.error}>{error}</span> : null}
+            </form>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

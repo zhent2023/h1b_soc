@@ -1,0 +1,37 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  --color-muted-strong: #475569;
+  --color-surface: rgba(255, 255, 255, 0.9);
+  --color-surface-soft: rgba(248, 249, 251, 0.94);
+  --color-surface-strong: rgba(255, 255, 255, 0.95);
+  --color-stroke: rgba(148, 163, 184, 0.28);
+  --color-stroke-strong: rgba(148, 163, 184, 0.45);
+  --color-accent: #0d9488;
+  --color-accent-strong: #0f766e;
+  --color-sky: #38bdf8;
+  --color-amber: #f59e0b;
+  --color-warning: #b45309;
+  --color-danger: #b91c1c;
+  --color-shell: #f8f6f1;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body), "IBM Plex Sans", sans-serif;
+  color: var(--color-ink);
+  background: var(--color-shell);
+  line-height: 1.6;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+img {
+  max-width: 100%;
+}
