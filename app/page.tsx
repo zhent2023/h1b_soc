@@ -284,6 +284,10 @@ export default function HomePage() {
     if (townshipLabel && stateAb && !townshipLabel.includes(',') && !townshipLabel.includes(stateAb)) {
       townshipLabel = `${townshipLabel}, ${stateAb}`;
     }
+    const hasGeo = Boolean(response.geo?.geocode || response.geo?.area || response.geo?.cbsa);
+    const hasWages = Boolean(response.wages?.level1);
+    const hasDuties = Boolean(response.duties?.duties?.length);
+    const hasExtremes = Boolean(response.extremes);
 
     return (
       <div className={styles.results} data-testid="results">
@@ -300,149 +304,179 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        <div className={styles.gridTwo}>
-          {response.geo?.geocode || response.geo?.area || response.geo?.cbsa ? (
-            <div className={`${styles.card} ${styles.primaryCard}`}>
-              <h3 className={styles.cardTitle}>County / Township</h3>
-              <div className={styles.primaryLine}>
-                {countyName ? (
-                  <span className={styles.primaryCounty} data-testid="geo-county">
-                    {countyName}
-                  </span>
-                ) : (
-                  <span data-testid="geo-county">County unavailable</span>
-                )}
-                {townshipLabel ? (
-                  <>
-                    <span className={styles.primaryDivider}>-</span>
-                    <span data-testid="geo-place">{townshipLabel}</span>
-                  </>
-                ) : null}
-              </div>
-              <div className={styles.locationGrid}>
-                {response.geo?.area ? (
-                  <div className={styles.stat}>
-                    <div className={styles.statLabel}>Wage Area</div>
-                    <div className={styles.statValue}>
-                      <span data-testid="area-name">{response.geo.area.areaName}</span>
-                    </div>
-                    <div className={styles.statMeta}>
-                      Area Code: <span data-testid="area-code">{response.geo.area.areaCode}</span>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              {response.geo?.cbsa ? (
-                <div className={styles.cbsaNote} data-testid="cbsa">
-                  CBSA: {response.geo.cbsa.cbsaName} ({response.geo.cbsa.cbsaCode})
-                  {response.geo.cbsa.isCrossState ? (
-                    <div data-testid="cbsa-cross">
-                      Cross-State MSA: {response.geo.cbsa.statesInMsa.join(', ')}
+        <div className={styles.resultsGrid}>
+          <div className={`${styles.card} ${styles.primaryCard}`}>
+            <h3 className={styles.cardTitle}>County / Township</h3>
+            {hasGeo ? (
+              <>
+                <div className={styles.primaryLine}>
+                  {countyName ? (
+                    <span className={styles.primaryCounty} data-testid="geo-county">
+                      {countyName}
+                    </span>
+                  ) : (
+                    <span data-testid="geo-county">County unavailable</span>
+                  )}
+                  {townshipLabel ? (
+                    <>
+                      <span className={styles.primaryDivider}>-</span>
+                      <span data-testid="geo-place">{townshipLabel}</span>
+                    </>
+                  ) : null}
+                </div>
+                <div className={styles.locationGrid}>
+                  {response.geo?.area ? (
+                    <div className={styles.stat}>
+                      <div className={styles.statLabel}>Wage Area</div>
+                      <div className={styles.statValue}>
+                        <span data-testid="area-name">{response.geo.area.areaName}</span>
+                      </div>
+                      <div className={styles.statMeta}>
+                        Area Code: <span data-testid="area-code">{response.geo.area.areaCode}</span>
+                      </div>
                     </div>
                   ) : null}
                 </div>
-              ) : null}
-              {response.explain?.summary?.length ? (
-                <div className={styles.matchDetails}>
-                  <div className={styles.matchDetailsTitle}>Match details</div>
-                  <ul className={styles.matchDetailsList} data-testid="explain-list">
-                    {response.explain.summary.map((entry: string, idx: number) => (
-                      <li key={`${entry}-${idx}`}>{entry}</li>
+                {response.geo?.cbsa ? (
+                  <div className={styles.cbsaNote} data-testid="cbsa">
+                    CBSA: {response.geo.cbsa.cbsaName} ({response.geo.cbsa.cbsaCode})
+                    {response.geo.cbsa.isCrossState ? (
+                      <div data-testid="cbsa-cross">
+                        Cross-State MSA: {response.geo.cbsa.statesInMsa.join(', ')}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {response.explain?.summary?.length ? (
+                  <div className={styles.matchDetails}>
+                    <div className={styles.matchDetailsTitle}>Match details</div>
+                    <ul className={styles.matchDetailsList} data-testid="explain-list">
+                      {response.explain.summary.map((entry: string, idx: number) => (
+                        <li key={`${entry}-${idx}`}>{entry}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className={styles.cardHint}>Add an address to resolve the county/township.</div>
+            )}
+          </div>
+
+          <div className={styles.card}>
+            <h3 className={styles.cardTitle}>Prevailing Wage</h3>
+            {hasWages ? (
+              <>
+                {response.featureFlags?.wageQualityBanner && response.wages.dataQuality ? (
+                  <div className={styles.warning} data-testid="wage-quality-banner">
+                    Wage data quality flag detected.
+                    {response.wages.dataQuality.notes?.length ? (
+                      <ul className={styles.list}>
+                        {response.wages.dataQuality.notes.map((note: string, idx: number) => (
+                          <li key={`${note}-${idx}`}>{note}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
+                {response.wages.proposedSalary ? (
+                  <div data-testid="proposed-salary" className={styles.muted}>
+                    Proposed: {response.wages.proposedSalary.amount} /{' '}
+                    {response.wages.proposedSalary.unit}
+                  </div>
+                ) : null}
+                <div data-testid="wage-l1-annual">L1 Annual: {response.wages.level1.annual}</div>
+                <div data-testid="wage-l1-hourly">L1 Hourly: {response.wages.level1.hourly}</div>
+                <div data-testid="wage-l2-annual">L2 Annual: {response.wages.level2?.annual}</div>
+                <div data-testid="wage-l2-hourly">L2 Hourly: {response.wages.level2?.hourly}</div>
+                <div data-testid="wage-l3-annual">L3 Annual: {response.wages.level3?.annual}</div>
+                <div data-testid="wage-l3-hourly">L3 Hourly: {response.wages.level3?.hourly}</div>
+                <div data-testid="wage-l4-annual">L4 Annual: {response.wages.level4?.annual}</div>
+                <div data-testid="wage-l4-hourly">L4 Hourly: {response.wages.level4?.hourly}</div>
+                {response.wages.metWageLevel ? (
+                  <div data-testid="met-wage-level" className={styles.muted}>
+                    Met Level: {response.wages.metWageLevel.metLevel} (
+                    {response.wages.metWageLevel.basis})
+                    {response.wages.metWageLevel.notes?.length ? (
+                      <ul className={styles.list}>
+                        {response.wages.metWageLevel.notes.map((note: string, idx: number) => (
+                          <li key={`${note}-${idx}`}>{note}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className={styles.cardHint}>
+                {!hasAddress && !hasSoc
+                  ? 'Enter an address and SOC code to see prevailing wages.'
+                  : !hasSoc
+                    ? 'Add a SOC code to see prevailing wage levels.'
+                    : response.kind === 'geo_needs_confirmation'
+                      ? 'Confirm a wage area to see prevailing wages.'
+                      : !hasAddress
+                        ? 'Add an address to get area-specific wages.'
+                        : 'Run an address + SOC lookup to see prevailing wages.'}
+              </div>
+            )}
+          </div>
+
+          <div className={`${styles.card} ${styles.spanTwo}`}>
+            <h3 className={styles.cardTitle}>Duties</h3>
+            {hasDuties ? (
+              <ul className={styles.list} data-testid="duties-list">
+                {response.duties.duties.map((duty: any, idx: number) => (
+                  <li key={`${duty.text}-${idx}`}>{duty.text}</li>
+                ))}
+              </ul>
+            ) : response.duties?.note ? (
+              <div data-testid="duties-note">{response.duties.note}</div>
+            ) : (
+              <div className={styles.cardHint}>
+                {!hasSoc
+                  ? 'Add a SOC code to see O*NET duties.'
+                  : response.kind === 'geo_needs_confirmation'
+                    ? 'Confirm the area to unlock duties.'
+                    : 'Duties are shown when a SOC code is provided.'}
+              </div>
+            )}
+          </div>
+
+          <div className={`${styles.card} ${styles.spanTwo}`}>
+            <h3 className={styles.cardTitle}>Extremes</h3>
+            {hasExtremes ? (
+              <div className={styles.gridTwo}>
+                <div>
+                  <strong>Lowest</strong>
+                  <ul className={styles.list} data-testid="extremes-lowest">
+                    {response.extremes.lowest.map((row: any) => (
+                      <li key={`low-${row.area.areaCode}`}>
+                        {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
+                      </li>
                     ))}
                   </ul>
                 </div>
-              ) : null}
-            </div>
-          ) : null}
+                <div>
+                  <strong>Highest</strong>
+                  <ul className={styles.list} data-testid="extremes-highest">
+                    {response.extremes.highest.map((row: any) => (
+                      <li key={`high-${row.area.areaCode}`}>
+                        {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : (
+              <div className={styles.cardHint}>
+                {!hasSoc
+                  ? 'Enter a SOC code to compare wage extremes across areas.'
+                  : 'Run SOC-only lookup to see national extremes.'}
+              </div>
+            )}
+          </div>
         </div>
-
-        {response.wages?.level1 ? (
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Wage</h3>
-            {response.featureFlags?.wageQualityBanner && response.wages.dataQuality ? (
-              <div className={styles.warning} data-testid="wage-quality-banner">
-                Wage data quality flag detected.
-                {response.wages.dataQuality.notes?.length ? (
-                  <ul className={styles.list}>
-                    {response.wages.dataQuality.notes.map((note: string, idx: number) => (
-                      <li key={`${note}-${idx}`}>{note}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-            {response.wages.proposedSalary ? (
-              <div data-testid="proposed-salary" className={styles.muted}>
-                Proposed: {response.wages.proposedSalary.amount} /{' '}
-                {response.wages.proposedSalary.unit}
-              </div>
-            ) : null}
-            <div data-testid="wage-l1-annual">L1 Annual: {response.wages.level1.annual}</div>
-            <div data-testid="wage-l1-hourly">L1 Hourly: {response.wages.level1.hourly}</div>
-            <div data-testid="wage-l2-annual">L2 Annual: {response.wages.level2?.annual}</div>
-            <div data-testid="wage-l2-hourly">L2 Hourly: {response.wages.level2?.hourly}</div>
-            <div data-testid="wage-l3-annual">L3 Annual: {response.wages.level3?.annual}</div>
-            <div data-testid="wage-l3-hourly">L3 Hourly: {response.wages.level3?.hourly}</div>
-            <div data-testid="wage-l4-annual">L4 Annual: {response.wages.level4?.annual}</div>
-            <div data-testid="wage-l4-hourly">L4 Hourly: {response.wages.level4?.hourly}</div>
-            {response.wages.metWageLevel ? (
-              <div data-testid="met-wage-level" className={styles.muted}>
-                Met Level: {response.wages.metWageLevel.metLevel} (
-                {response.wages.metWageLevel.basis})
-                {response.wages.metWageLevel.notes?.length ? (
-                  <ul className={styles.list}>
-                    {response.wages.metWageLevel.notes.map((note: string, idx: number) => (
-                      <li key={`${note}-${idx}`}>{note}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {response.duties?.duties?.length ? (
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Duties</h3>
-            <ul className={styles.list} data-testid="duties-list">
-              {response.duties.duties.map((duty: any, idx: number) => (
-                <li key={`${duty.text}-${idx}`}>{duty.text}</li>
-              ))}
-            </ul>
-          </div>
-        ) : response.duties?.note ? (
-          <div className={styles.card} data-testid="duties-note">
-            {response.duties.note}
-          </div>
-        ) : null}
-
-        {response.extremes ? (
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Extremes</h3>
-            <div className={styles.gridTwo}>
-              <div>
-                <strong>Lowest</strong>
-                <ul className={styles.list} data-testid="extremes-lowest">
-                  {response.extremes.lowest.map((row: any) => (
-                    <li key={`low-${row.area.areaCode}`}>
-                      {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <strong>Highest</strong>
-                <ul className={styles.list} data-testid="extremes-highest">
-                  {response.extremes.highest.map((row: any) => (
-                    <li key={`high-${row.area.areaCode}`}>
-                      {row.area.areaCode} {row.area.areaName}: {row.level1.annual}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        ) : null}
 
         {response.kind === 'geo_needs_confirmation' && response.confirmation?.suggestions ? (
           <div className={styles.card}>
