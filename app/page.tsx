@@ -811,6 +811,8 @@ export default function HomePage() {
                 {socSuffixMatch ? (
                   <span className={styles.hintStrong} data-testid="soc-suffix-note">
                     Using {socSuffixMatch[1]} for wages (O*NET suffix .{socSuffixMatch[2]} ignored).
+                    {' '}
+                    Tasks keep the O*NET {socSuffixMatch[1]}.{socSuffixMatch[2]} suffix.
                   </span>
                 ) : null}
               </label>
