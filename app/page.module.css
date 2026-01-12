@@ -517,9 +517,68 @@
   font-weight: 600;
 }
 
+.cardHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .cardHint {
   font-size: 13px;
   color: var(--color-muted);
+}
+
+.copyButton {
+  border: 1px solid rgba(13, 148, 136, 0.3);
+  background: transparent;
+  color: var(--color-accent-strong);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.copyButton:hover {
+  border-color: rgba(13, 148, 136, 0.6);
+  color: var(--color-accent-strong);
+}
+
+.copyButtonSuccess {
+  background: rgba(13, 148, 136, 0.12);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-stroke);
+  background: rgba(248, 249, 251, 0.6);
+}
+
+.table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.tableNumber {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .srOnly {

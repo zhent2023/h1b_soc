@@ -27,6 +27,7 @@ export default function HomePage() {
   const [candidateError, setCandidateError] = useState('');
   const [authMode, setAuthMode] = useState<'public' | 'invite' | null>(null);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [dutiesCopied, setDutiesCopied] = useState(false);
 
   const trimmedAddress = addressText.trim();
   const trimmedSoc = socCode.trim();
@@ -61,6 +62,14 @@ export default function HomePage() {
   const parsedAddress = useMemo(
     () => (addressText.trim() ? parseFullAddress(addressText) : null),
     [addressText],
+  );
+  const annualFormatter = useMemo(
+    () => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }),
+    [],
+  );
+  const hourlyFormatter = useMemo(
+    () => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    [],
   );
 
   useEffect(() => {
@@ -148,6 +157,10 @@ export default function HomePage() {
       sessionStorage.removeItem(confirmationStorageKey);
     }
   }, [response, lastRequest]);
+
+  useEffect(() => {
+    setDutiesCopied(false);
+  }, [response?.duties]);
 
   const handleLogout = async () => {
     try {
@@ -274,6 +287,28 @@ export default function HomePage() {
     }
   };
 
+  const formatMoney = (value: number | null | undefined, unit: 'year' | 'hour') => {
+    if (value === null || value === undefined) {
+      return '—';
+    }
+    const formatter = unit === 'hour' ? hourlyFormatter : annualFormatter;
+    return `$${formatter.format(value)}`;
+  };
+
+  const handleCopyDuties = async () => {
+    if (!response?.duties?.duties?.length) {
+      return;
+    }
+    const text = response.duties.duties.map((duty: any) => `- ${duty.text}`).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setDutiesCopied(true);
+      window.setTimeout(() => setDutiesCopied(false), 2000);
+    } catch {
+      setDutiesCopied(false);
+    }
+  };
+
   const renderResults = () => {
     if (!response) return null;
 
@@ -373,14 +408,53 @@ export default function HomePage() {
                     {response.wages.proposedSalary.unit}
                   </div>
                 ) : null}
-                <div data-testid="wage-l1-annual">L1 Annual: {response.wages.level1.annual}</div>
-                <div data-testid="wage-l1-hourly">L1 Hourly: {response.wages.level1.hourly}</div>
-                <div data-testid="wage-l2-annual">L2 Annual: {response.wages.level2?.annual}</div>
-                <div data-testid="wage-l2-hourly">L2 Hourly: {response.wages.level2?.hourly}</div>
-                <div data-testid="wage-l3-annual">L3 Annual: {response.wages.level3?.annual}</div>
-                <div data-testid="wage-l3-hourly">L3 Hourly: {response.wages.level3?.hourly}</div>
-                <div data-testid="wage-l4-annual">L4 Annual: {response.wages.level4?.annual}</div>
-                <div data-testid="wage-l4-hourly">L4 Hourly: {response.wages.level4?.hourly}</div>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Wage Level</th>
+                      <th className={styles.tableNumber}>Hourly</th>
+                      <th className={styles.tableNumber}>Yearly</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>I</td>
+                      <td className={styles.tableNumber} data-testid="wage-l1-hourly">
+                        {formatMoney(response.wages.level1?.hourly, 'hour')}
+                      </td>
+                      <td className={styles.tableNumber} data-testid="wage-l1-annual">
+                        {formatMoney(response.wages.level1?.annual, 'year')}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>II</td>
+                      <td className={styles.tableNumber} data-testid="wage-l2-hourly">
+                        {formatMoney(response.wages.level2?.hourly, 'hour')}
+                      </td>
+                      <td className={styles.tableNumber} data-testid="wage-l2-annual">
+                        {formatMoney(response.wages.level2?.annual, 'year')}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>III</td>
+                      <td className={styles.tableNumber} data-testid="wage-l3-hourly">
+                        {formatMoney(response.wages.level3?.hourly, 'hour')}
+                      </td>
+                      <td className={styles.tableNumber} data-testid="wage-l3-annual">
+                        {formatMoney(response.wages.level3?.annual, 'year')}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>IV</td>
+                      <td className={styles.tableNumber} data-testid="wage-l4-hourly">
+                        {formatMoney(response.wages.level4?.hourly, 'hour')}
+                      </td>
+                      <td className={styles.tableNumber} data-testid="wage-l4-annual">
+                        {formatMoney(response.wages.level4?.annual, 'year')}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
                 {response.wages.metWageLevel ? (
                   <div data-testid="met-wage-level" className={styles.muted}>
                     Met Level: {response.wages.metWageLevel.metLevel} (
@@ -411,7 +485,18 @@ export default function HomePage() {
           </div>
 
           <div className={`${styles.card} ${styles.spanTwo}`}>
-            <h3 className={styles.cardTitle}>Duties</h3>
+            <div className={styles.cardHeaderRow}>
+              <h3 className={styles.cardTitle}>Duties</h3>
+              {hasDuties ? (
+                <button
+                  type="button"
+                  className={`${styles.copyButton} ${dutiesCopied ? styles.copyButtonSuccess : ''}`}
+                  onClick={handleCopyDuties}
+                >
+                  {dutiesCopied ? 'Copied' : 'Copy duties'}
+                </button>
+              ) : null}
+            </div>
             {hasDuties ? (
               <ul className={styles.list} data-testid="duties-list">
                 {response.duties.duties.map((duty: any, idx: number) => (
@@ -434,28 +519,45 @@ export default function HomePage() {
           <div className={`${styles.card} ${styles.spanTwo}`}>
             <h3 className={styles.cardTitle}>Extremes</h3>
             {hasExtremes ? (
-              <div className={styles.gridTwo}>
-                <div>
-                  <strong>Lowest</strong>
-                  <ul className={styles.list} data-testid="extremes-lowest">
-                    {response.extremes.lowest.map((row: any) => (
-                      <li key={`low-${row.area.areaCode}`}>
-                        {formatAreaLabel(row.area)}: {row.level1.annual}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <strong>Highest</strong>
-                  <ul className={styles.list} data-testid="extremes-highest">
-                    {response.extremes.highest.map((row: any) => (
-                      <li key={`high-${row.area.areaCode}`}>
-                        {formatAreaLabel(row.area)}: {row.level1.annual}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
+              <table className={styles.table} data-testid="extremes-table">
+                <thead>
+                  <tr>
+                    <th>Lowest</th>
+                    <th>Highest</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({
+                    length: Math.max(
+                      response.extremes.lowest.length,
+                      response.extremes.highest.length,
+                    ),
+                  }).map((_, index) => {
+                    const low = response.extremes.lowest[index];
+                    const high = response.extremes.highest[index];
+                    return (
+                      <tr key={`extreme-${index}`}>
+                        <td data-testid="extremes-lowest">
+                          {low
+                            ? `${formatAreaLabel(low.area)}: ${formatMoney(
+                                low.level1?.annual,
+                                'year',
+                              )}`
+                            : '—'}
+                        </td>
+                        <td data-testid="extremes-highest">
+                          {high
+                            ? `${formatAreaLabel(high.area)}: ${formatMoney(
+                                high.level1?.annual,
+                                'year',
+                              )}`
+                            : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             ) : (
               <div className={styles.cardHint}>
                 {!hasSoc

@@ -90,9 +90,9 @@ test('soc only mode extremes are stable', async ({ page }) => {
 
   const runLookup = async () => {
     await page.getByTestId('lookup-button').click();
-    await expect(page.getByTestId('extremes-lowest')).toBeVisible({ timeout: 2000 });
-    const lowest = await page.getByTestId('extremes-lowest').locator('li').allTextContents();
-    const highest = await page.getByTestId('extremes-highest').locator('li').allTextContents();
+    await expect(page.getByTestId('extremes-table')).toBeVisible({ timeout: 2000 });
+    const lowest = await page.getByTestId('extremes-lowest').allTextContents();
+    const highest = await page.getByTestId('extremes-highest').allTextContents();
     return { lowest, highest };
   };
 
