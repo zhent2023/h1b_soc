@@ -7,6 +7,7 @@ export interface AreaMeta {
   areaName: string;
   stateAb?: string | null;
   areaType: string;
+  displayName?: string | null;
 }
 
 export interface WageLevel {
@@ -84,13 +85,44 @@ export function computeMetWageLevel(params: {
   return { metLevel, basis, notes };
 }
 
-function mapArea(area: { areaCode: string; areaName: string; stateAb?: string | null }): AreaMeta {
+function mapArea(
+  area: { areaCode: string; areaName: string; stateAb?: string | null },
+  extra?: Partial<AreaMeta>,
+): AreaMeta {
   return {
     areaCode: area.areaCode,
     areaName: area.areaName,
     stateAb: area.stateAb ?? null,
     areaType: 'oflc',
+    ...extra,
   };
+}
+
+function appendState(label: string | null | undefined, stateAb: string | null | undefined) {
+  if (!label || !stateAb) return label ?? null;
+  const stateToken = new RegExp(`\\b${stateAb}\\b`);
+  if (stateToken.test(label)) {
+    return label;
+  }
+  return `${label}, ${stateAb}`;
+}
+
+function buildDisplayName(params: {
+  areaName: string;
+  stateAb?: string | null;
+  countyName?: string | null;
+  townName?: string | null;
+}) {
+  const { areaName, stateAb, countyName, townName } = params;
+  const townLabel = appendState(townName ?? null, stateAb ?? null);
+  const areaLabel = appendState(areaName, stateAb ?? null);
+  if (countyName && townLabel) {
+    return `${countyName} - ${townLabel}`;
+  }
+  if (countyName && areaLabel) {
+    return `${countyName} - ${areaLabel}`;
+  }
+  return areaLabel ?? countyName ?? areaName;
 }
 
 function buildLevels(params: {
@@ -227,6 +259,49 @@ export async function getSocExtremes(params: {
     take: n,
   });
 
+  const areaCodes = Array.from(
+    new Set([...lowest.map((row) => row.areaCode), ...highest.map((row) => row.areaCode)]),
+  );
+  const countyRows =
+    areaCodes.length > 0
+      ? await prisma.oflcAreaCounty.findMany({
+          where: {
+            datasetVersionId,
+            areaCode: { in: areaCodes },
+          },
+          select: {
+            areaCode: true,
+            countyTownName: true,
+            matchKind: true,
+            stateAb: true,
+          },
+          orderBy: [{ matchKind: 'asc' }, { countyTownName: 'asc' }],
+        })
+      : [];
+
+  const areaHints = new Map<
+    string,
+    { countyName?: string | null; townName?: string | null; stateAb?: string | null }
+  >();
+  for (const row of countyRows) {
+    const entry =
+      areaHints.get(row.areaCode) ??
+      (() => {
+        const created = { stateAb: row.stateAb ?? null };
+        areaHints.set(row.areaCode, created);
+        return created;
+      })();
+    if (!entry.stateAb && row.stateAb) {
+      entry.stateAb = row.stateAb;
+    }
+    if (row.matchKind === 'county' && !entry.countyName) {
+      entry.countyName = row.countyTownName;
+    }
+    if (row.matchKind === 'town' && !entry.townName) {
+      entry.townName = row.countyTownName;
+    }
+  }
+
   const result = {
     lowest: lowest.map((row) => {
       const levels = buildLevels({
@@ -239,8 +314,15 @@ export async function getSocExtremes(params: {
         l4Annual: row.l4Annual ?? null,
         l4Hourly: row.l4Hourly ?? null,
       });
+      const hints = areaHints.get(row.areaCode);
+      const displayName = buildDisplayName({
+        areaName: row.area.areaName,
+        stateAb: row.area.stateAb ?? hints?.stateAb ?? null,
+        countyName: hints?.countyName ?? null,
+        townName: hints?.townName ?? null,
+      });
       return {
-        area: mapArea(row.area),
+        area: mapArea(row.area, { displayName }),
         ...levels,
       };
     }),
@@ -255,8 +337,15 @@ export async function getSocExtremes(params: {
         l4Annual: row.l4Annual ?? null,
         l4Hourly: row.l4Hourly ?? null,
       });
+      const hints = areaHints.get(row.areaCode);
+      const displayName = buildDisplayName({
+        areaName: row.area.areaName,
+        stateAb: row.area.stateAb ?? hints?.stateAb ?? null,
+        countyName: hints?.countyName ?? null,
+        townName: hints?.townName ?? null,
+      });
       return {
-        area: mapArea(row.area),
+        area: mapArea(row.area, { displayName }),
         ...levels,
       };
     }),
