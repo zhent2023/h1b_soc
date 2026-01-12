@@ -64,7 +64,7 @@ export default function HomePage() {
     [addressText],
   );
   const annualFormatter = useMemo(
-    () => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }),
+    () => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     [],
   );
   const hourlyFormatter = useMemo(
@@ -295,6 +295,11 @@ export default function HomePage() {
     return `$${formatter.format(value)}`;
   };
 
+  const hourlyFromAnnual = (annual: number | null | undefined) => {
+    if (annual === null || annual === undefined) return null;
+    return annual / 2080;
+  };
+
   const handleCopyDuties = async () => {
     if (!response?.duties?.duties?.length) {
       return;
@@ -429,7 +434,7 @@ export default function HomePage() {
                     <tr>
                       <td>I</td>
                       <td className={styles.tableNumber} data-testid="wage-l1-hourly">
-                        {formatMoney(response.wages.level1?.hourly, 'hour')}
+                        {formatMoney(hourlyFromAnnual(response.wages.level1?.annual), 'hour')}
                       </td>
                       <td className={styles.tableNumber} data-testid="wage-l1-annual">
                         {formatMoney(response.wages.level1?.annual, 'year')}
@@ -438,7 +443,7 @@ export default function HomePage() {
                     <tr>
                       <td>II</td>
                       <td className={styles.tableNumber} data-testid="wage-l2-hourly">
-                        {formatMoney(response.wages.level2?.hourly, 'hour')}
+                        {formatMoney(hourlyFromAnnual(response.wages.level2?.annual), 'hour')}
                       </td>
                       <td className={styles.tableNumber} data-testid="wage-l2-annual">
                         {formatMoney(response.wages.level2?.annual, 'year')}
@@ -447,7 +452,7 @@ export default function HomePage() {
                     <tr>
                       <td>III</td>
                       <td className={styles.tableNumber} data-testid="wage-l3-hourly">
-                        {formatMoney(response.wages.level3?.hourly, 'hour')}
+                        {formatMoney(hourlyFromAnnual(response.wages.level3?.annual), 'hour')}
                       </td>
                       <td className={styles.tableNumber} data-testid="wage-l3-annual">
                         {formatMoney(response.wages.level3?.annual, 'year')}
@@ -456,7 +461,7 @@ export default function HomePage() {
                     <tr>
                       <td>IV</td>
                       <td className={styles.tableNumber} data-testid="wage-l4-hourly">
-                        {formatMoney(response.wages.level4?.hourly, 'hour')}
+                        {formatMoney(hourlyFromAnnual(response.wages.level4?.annual), 'hour')}
                       </td>
                       <td className={styles.tableNumber} data-testid="wage-l4-annual">
                         {formatMoney(response.wages.level4?.annual, 'year')}
