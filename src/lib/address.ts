@@ -75,18 +75,29 @@ export function parseFullAddress(fullText: string): ParsedAddress {
 
   if (parts.length >= 3) {
     const stateZipPart = parts[parts.length - 1];
-    const cityPart = parts[parts.length - 2];
-    city = cityPart;
+    const statePartCandidate = parts[parts.length - 2];
+    const cityPartCandidate = parts[parts.length - 3];
+    const zipOnly = /^\d{5}$/.test(stateZipPart);
+    const stateOnly = /^[A-Za-z]{2}$/.test(statePartCandidate ?? '');
 
-    const stateZip = parseStateZip(stateZipPart);
-    if (stateZip) {
-      state = stateZip.state;
-      zip = stateZip.zip;
+    if (zipOnly && stateOnly && cityPartCandidate) {
+      city = cityPartCandidate;
+      state = statePartCandidate.toUpperCase();
+      zip = stateZipPart;
     } else {
-      warnings.push('State/ZIP could not be parsed.');
+      const cityPart = parts[parts.length - 2];
+      city = cityPart;
+
+      const stateZip = parseStateZip(stateZipPart);
+      if (stateZip) {
+        state = stateZip.state;
+        zip = stateZip.zip;
+      } else {
+        warnings.push('State/ZIP could not be parsed.');
+      }
     }
 
-    const streetParts = parts.slice(0, -2);
+    const streetParts = zipOnly && stateOnly ? parts.slice(0, -3) : parts.slice(0, -2);
     line1 = streetParts[0] ?? '';
 
     const lineSplit = splitLine(line1);
