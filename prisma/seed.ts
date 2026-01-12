@@ -66,10 +66,30 @@ async function main() {
     create: { email: accessEmail, keyHash, isActive: true },
   });
 
+  const consentedAt = new Date();
   await prisma.user.upsert({
     where: { email: accessEmail },
-    update: { passwordHash, isActive: true },
-    create: { email: accessEmail, passwordHash, isActive: true },
+    update: {
+      passwordHash,
+      fullName: 'Demo User',
+      lawFirm: 'Demo Law',
+      isAttorneyConfirmed: true,
+      marketingConsent: false,
+      agreedAt: consentedAt,
+      agreedIp: 'seed',
+      isActive: true,
+    },
+    create: {
+      email: accessEmail,
+      passwordHash,
+      fullName: 'Demo User',
+      lawFirm: 'Demo Law',
+      isAttorneyConfirmed: true,
+      marketingConsent: false,
+      agreedAt: consentedAt,
+      agreedIp: 'seed',
+      isActive: true,
+    },
   });
 
   const areaFixtures = [

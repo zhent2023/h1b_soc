@@ -71,9 +71,13 @@ export default function LoginPage() {
         <section className={styles.loginGrid}>
           <div>
             <h2 className={styles.loginTitle}>Sign in</h2>
-            <p className={styles.subtitle}>Use the credentials provided by your administrator.</p>
+            <p className={styles.subtitle}>Access is limited to attorneys and professional staff.</p>
             <div className={styles.loginMeta}>
-              Invite-only access. For help, contact your admin.
+              Need an account?{' '}
+              <a className={styles.link} href="/register">
+                Register here
+              </a>
+              .
             </div>
           </div>
           <div className={`${styles.card} ${styles.loginCard}`}>
