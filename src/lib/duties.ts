@@ -21,7 +21,7 @@ export async function getDutiesForOnetCode(params: {
       datasetVersionId,
       onetCode,
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
   });
 
   if (duties.length === 0) {
@@ -70,7 +70,7 @@ export async function getDutiesForSoc(params: {
       datasetVersionId,
       onetCode: { in: onetCodes },
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
   });
 
   const result = {

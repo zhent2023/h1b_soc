@@ -58,12 +58,14 @@ async function main() {
       onetCode: code,
       dutyText,
       dutyTextNorm: normalize(dutyText),
+      sortOrder: 1,
     },
     {
       datasetVersionId: active.id,
       onetCode: code,
       dutyText: dutyTextAlt,
       dutyTextNorm: normalize(dutyTextAlt),
+      sortOrder: 2,
     },
   ]);
 

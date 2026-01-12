@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { cacheGet, cacheSet } from './cache';
 
@@ -36,6 +36,18 @@ export interface AreaWageRow {
   level2: WageLevel;
   level3: WageLevel;
   level4: WageLevel;
+}
+
+type DecimalValue = Prisma.Decimal | number;
+
+function decimalToNumber(value: DecimalValue | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return value;
+  return Number(value.toString());
+}
+
+function roundToCents(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 export function computeMetWageLevel(params: {
@@ -157,19 +169,22 @@ function buildLevels(params: {
   l4Annual: number | null;
   l4Hourly: number | null;
 }) {
-  const baseHourly = params.l1Hourly ?? Math.round(params.l1Annual / 2080);
-  const level1 = { annual: params.l1Annual, hourly: params.l1Hourly ?? baseHourly };
+  const baseHourly = params.l1Hourly ?? roundToCents(params.l1Annual / 2080);
+  const level1 = {
+    annual: params.l1Annual,
+    hourly: roundToCents(params.l1Hourly ?? baseHourly),
+  };
   const level2 = {
     annual: params.l2Annual ?? params.l1Annual + 15000,
-    hourly: params.l2Hourly ?? baseHourly + 8,
+    hourly: roundToCents(params.l2Hourly ?? baseHourly + 8),
   };
   const level3 = {
     annual: params.l3Annual ?? params.l1Annual + 30000,
-    hourly: params.l3Hourly ?? baseHourly + 16,
+    hourly: roundToCents(params.l3Hourly ?? baseHourly + 16),
   };
   const level4 = {
     annual: params.l4Annual ?? params.l1Annual + 45000,
-    hourly: params.l4Hourly ?? baseHourly + 24,
+    hourly: roundToCents(params.l4Hourly ?? baseHourly + 24),
   };
 
   return { level1, level2, level3, level4 };
@@ -210,13 +225,13 @@ export async function getWageRate(params: {
 
   const levels = buildLevels({
     l1Annual: record.l1Annual,
-    l1Hourly: record.l1Hourly ?? null,
+    l1Hourly: decimalToNumber(record.l1Hourly),
     l2Annual: record.l2Annual ?? null,
-    l2Hourly: record.l2Hourly ?? null,
+    l2Hourly: decimalToNumber(record.l2Hourly),
     l3Annual: record.l3Annual ?? null,
-    l3Hourly: record.l3Hourly ?? null,
+    l3Hourly: decimalToNumber(record.l3Hourly),
     l4Annual: record.l4Annual ?? null,
-    l4Hourly: record.l4Hourly ?? null,
+    l4Hourly: decimalToNumber(record.l4Hourly),
   });
 
   const result: WageRateDTO = {
@@ -328,13 +343,13 @@ export async function getSocExtremes(params: {
     lowest: lowest.map((row) => {
       const levels = buildLevels({
         l1Annual: row.l1Annual,
-        l1Hourly: row.l1Hourly ?? null,
+        l1Hourly: decimalToNumber(row.l1Hourly),
         l2Annual: row.l2Annual ?? null,
-        l2Hourly: row.l2Hourly ?? null,
+        l2Hourly: decimalToNumber(row.l2Hourly),
         l3Annual: row.l3Annual ?? null,
-        l3Hourly: row.l3Hourly ?? null,
+        l3Hourly: decimalToNumber(row.l3Hourly),
         l4Annual: row.l4Annual ?? null,
-        l4Hourly: row.l4Hourly ?? null,
+        l4Hourly: decimalToNumber(row.l4Hourly),
       });
       const hints = areaHints.get(row.areaCode);
       const displayName = buildDisplayName({
@@ -351,13 +366,13 @@ export async function getSocExtremes(params: {
     highest: highest.map((row) => {
       const levels = buildLevels({
         l1Annual: row.l1Annual,
-        l1Hourly: row.l1Hourly ?? null,
+        l1Hourly: decimalToNumber(row.l1Hourly),
         l2Annual: row.l2Annual ?? null,
-        l2Hourly: row.l2Hourly ?? null,
+        l2Hourly: decimalToNumber(row.l2Hourly),
         l3Annual: row.l3Annual ?? null,
-        l3Hourly: row.l3Hourly ?? null,
+        l3Hourly: decimalToNumber(row.l3Hourly),
         l4Annual: row.l4Annual ?? null,
-        l4Hourly: row.l4Hourly ?? null,
+        l4Hourly: decimalToNumber(row.l4Hourly),
       });
       const hints = areaHints.get(row.areaCode);
       const displayName = buildDisplayName({

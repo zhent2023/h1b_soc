@@ -10,19 +10,23 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function roundToCents(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 function buildWageLevels(l1Annual: number, l1Hourly: number | null) {
   const level2Annual = l1Annual + 15000;
   const level3Annual = l1Annual + 30000;
   const level4Annual = l1Annual + 45000;
-  const baseHourly = l1Hourly ?? Math.round(l1Annual / 2080);
+  const baseHourly = l1Hourly ?? roundToCents(l1Annual / 2080);
 
   return {
     l2Annual: level2Annual,
-    l2Hourly: baseHourly + 8,
+    l2Hourly: roundToCents(baseHourly + 8),
     l3Annual: level3Annual,
-    l3Hourly: baseHourly + 16,
+    l3Hourly: roundToCents(baseHourly + 16),
     l4Annual: level4Annual,
-    l4Hourly: baseHourly + 24,
+    l4Hourly: roundToCents(baseHourly + 24),
   };
 }
 
@@ -185,17 +189,21 @@ async function main() {
     skipDuplicates: true,
   });
 
-  const wageRates = areaFixtures.map((area, index) => ({
-    datasetVersionId: oflcVersion.id,
-    wageYear: DEFAULT_WAGE_YEAR,
-    isAcwia: DEFAULT_IS_ACWIA,
-    areaCode: area.areaCode,
-    socCode: '15-1252',
-    l1Annual: 70000 + index * 4500,
-    l1Hourly: 35 + index,
-    ...buildWageLevels(70000 + index * 4500, 35 + index),
-    hasDataQualityIssue: false,
-  }));
+  const wageRates = areaFixtures.map((area, index) => {
+    const l1Annual = 70000 + index * 4500;
+    const l1Hourly = roundToCents(l1Annual / 2080);
+    return {
+      datasetVersionId: oflcVersion.id,
+      wageYear: DEFAULT_WAGE_YEAR,
+      isAcwia: DEFAULT_IS_ACWIA,
+      areaCode: area.areaCode,
+      socCode: '15-1252',
+      l1Annual,
+      l1Hourly,
+      ...buildWageLevels(l1Annual, l1Hourly),
+      hasDataQualityIssue: false,
+    };
+  });
 
   const targetAreaCodes = ['14460', '35620', '12420', '31080'];
   const extraSocWages = socFixtures
@@ -206,7 +214,7 @@ async function main() {
           return [];
         }
         const l1Annual = 60000 + socIndex * 4000 + areaIndex * 1500;
-        const l1Hourly = 29 + socIndex + areaIndex;
+        const l1Hourly = roundToCents(l1Annual / 2080);
         return [
           {
             datasetVersionId: oflcVersion.id,
@@ -261,8 +269,8 @@ async function main() {
     },
     update: {
       l1Annual: 52000,
-      l1Hourly: 25,
-      ...buildWageLevels(52000, 25),
+      l1Hourly: roundToCents(52000 / 2080),
+      ...buildWageLevels(52000, roundToCents(52000 / 2080)),
       hasDataQualityIssue: true,
       dataQualityNotes: { issues: ['Fixture data quality flag for testing.'] },
     },
@@ -273,8 +281,8 @@ async function main() {
       areaCode: '14460',
       socCode: '13-1161',
       l1Annual: 52000,
-      l1Hourly: 25,
-      ...buildWageLevels(52000, 25),
+      l1Hourly: roundToCents(52000 / 2080),
+      ...buildWageLevels(52000, roundToCents(52000 / 2080)),
       hasDataQualityIssue: true,
       dataQualityNotes: { issues: ['Fixture data quality flag for testing.'] },
     },
@@ -351,11 +359,12 @@ async function main() {
   });
 
   await prisma.onetDuty.createMany({
-    data: dutyFixtures.map((duty) => ({
+    data: dutyFixtures.map((duty, index) => ({
       datasetVersionId: onetVersion.id,
       onetCode: duty.onetCode,
       dutyText: duty.dutyText,
       dutyTextNorm: normalize(duty.dutyText),
+      sortOrder: index + 1,
     })),
   });
 
