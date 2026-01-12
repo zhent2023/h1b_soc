@@ -279,18 +279,18 @@ export async function getSocExtremes(params: {
         })
       : [];
 
-  const areaHints = new Map<
-    string,
-    { countyName?: string | null; townName?: string | null; stateAb?: string | null }
-  >();
+  type AreaHint = {
+    countyName?: string | null;
+    townName?: string | null;
+    stateAb: string | null;
+  };
+  const areaHints = new Map<string, AreaHint>();
   for (const row of countyRows) {
-    const entry =
-      areaHints.get(row.areaCode) ??
-      (() => {
-        const created = { stateAb: row.stateAb ?? null };
-        areaHints.set(row.areaCode, created);
-        return created;
-      })();
+    let entry = areaHints.get(row.areaCode);
+    if (!entry) {
+      entry = { stateAb: row.stateAb ?? null };
+      areaHints.set(row.areaCode, entry);
+    }
     if (!entry.stateAb && row.stateAb) {
       entry.stateAb = row.stateAb;
     }
