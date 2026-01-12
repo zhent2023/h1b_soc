@@ -489,14 +489,14 @@ export default function HomePage() {
 
           <div className={`${styles.card} ${styles.spanTwo}`}>
             <div className={styles.cardHeaderRow}>
-              <h3 className={styles.cardTitle}>Duties</h3>
+              <h3 className={styles.cardTitle}>Tasks</h3>
               {hasDuties ? (
                 <button
                   type="button"
                   className={`${styles.copyButton} ${dutiesCopied ? styles.copyButtonSuccess : ''}`}
                   onClick={handleCopyDuties}
                 >
-                  {dutiesCopied ? 'Copied' : 'Copy duties'}
+                  {dutiesCopied ? 'Copied' : 'Copy tasks'}
                 </button>
               ) : null}
             </div>
@@ -511,10 +511,10 @@ export default function HomePage() {
             ) : (
               <div className={styles.cardHint}>
                 {!hasSoc
-                  ? 'Add a SOC code to see O*NET duties.'
+                  ? 'Add a SOC code to see O*NET tasks.'
                   : response.kind === 'geo_needs_confirmation'
-                    ? 'Confirm the area to unlock duties.'
-                    : 'Duties are shown when a SOC code is provided.'}
+                    ? 'Confirm the area to unlock tasks.'
+                    : 'Tasks are shown when a SOC code is provided.'}
               </div>
             )}
           </div>
