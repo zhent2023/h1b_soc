@@ -277,6 +277,14 @@ export default function HomePage() {
   const renderResults = () => {
     if (!response) return null;
 
+    const countyName = response.geo?.geocode?.countyName ?? null;
+    const placeName = response.geo?.geocode?.placeName ?? response.geo?.area?.areaName ?? null;
+    const stateAb = response.geo?.geocode?.stateAb ?? response.geo?.area?.stateAb ?? null;
+    let townshipLabel = placeName ? String(placeName) : null;
+    if (townshipLabel && stateAb && !townshipLabel.includes(',') && !townshipLabel.includes(stateAb)) {
+      townshipLabel = `${townshipLabel}, ${stateAb}`;
+    }
+
     return (
       <div className={styles.results} data-testid="results">
         <div className={styles.resultsHeader}>
@@ -296,23 +304,22 @@ export default function HomePage() {
           {response.geo?.geocode || response.geo?.area || response.geo?.cbsa ? (
             <div className={`${styles.card} ${styles.primaryCard}`}>
               <h3 className={styles.cardTitle}>County / Township</h3>
+              <div className={styles.primaryLine}>
+                {countyName ? (
+                  <span className={styles.primaryCounty} data-testid="geo-county">
+                    {countyName}
+                  </span>
+                ) : (
+                  <span data-testid="geo-county">County unavailable</span>
+                )}
+                {townshipLabel ? (
+                  <>
+                    <span className={styles.primaryDivider}>-</span>
+                    <span data-testid="geo-place">{townshipLabel}</span>
+                  </>
+                ) : null}
+              </div>
               <div className={styles.locationGrid}>
-                {response.geo?.geocode?.placeName ? (
-                  <div className={styles.stat}>
-                    <div className={styles.statLabel}>Town / Place</div>
-                    <div className={styles.statValue} data-testid="geo-place">
-                      {response.geo.geocode.placeName}
-                    </div>
-                  </div>
-                ) : null}
-                {response.geo?.geocode?.countyName ? (
-                  <div className={styles.stat}>
-                    <div className={styles.statLabel}>County</div>
-                    <div className={styles.statValue} data-testid="geo-county">
-                      {response.geo.geocode.countyName}
-                    </div>
-                  </div>
-                ) : null}
                 {response.geo?.area ? (
                   <div className={styles.stat}>
                     <div className={styles.statLabel}>Wage Area</div>
@@ -335,17 +342,16 @@ export default function HomePage() {
                   ) : null}
                 </div>
               ) : null}
-            </div>
-          ) : null}
-
-          {response.explain?.summary?.length ? (
-            <div className={`${styles.card} ${styles.secondaryCard}`}>
-              <h3 className={styles.cardTitle}>Match Details</h3>
-              <ul className={styles.list} data-testid="explain-list">
-                {response.explain.summary.map((entry: string, idx: number) => (
-                  <li key={`${entry}-${idx}`}>{entry}</li>
-                ))}
-              </ul>
+              {response.explain?.summary?.length ? (
+                <div className={styles.matchDetails}>
+                  <div className={styles.matchDetailsTitle}>Match details</div>
+                  <ul className={styles.matchDetailsList} data-testid="explain-list">
+                    {response.explain.summary.map((entry: string, idx: number) => (
+                      <li key={`${entry}-${idx}`}>{entry}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
