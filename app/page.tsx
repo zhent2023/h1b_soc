@@ -657,7 +657,10 @@ export default function HomePage() {
         <div className={styles.container}>
           <div className={styles.header}>
             <div className={styles.brand}>
-              <h1 className={styles.title}>H1B SOC</h1>
+              <div className={styles.titleRow}>
+                <h1 className={styles.title}>H1B SOC</h1>
+                <span className={styles.datasetTag}>7/2025-6/2026</span>
+              </div>
               <p className={styles.subtitle}>Loading...</p>
             </div>
           </div>
@@ -676,7 +679,10 @@ export default function HomePage() {
       <div className={styles.container}>
         <div className={styles.header}>
           <div className={styles.brand}>
-            <h1 className={styles.title}>H1B SOC</h1>
+            <div className={styles.titleRow}>
+              <h1 className={styles.title}>H1B SOC</h1>
+              <span className={styles.datasetTag}>7/2025-6/2026</span>
+            </div>
             <p className={styles.subtitle}>Query wage and SOC data with address and SOC inputs.</p>
           </div>
           {authMode === 'invite' && authEmail ? (
@@ -862,8 +868,8 @@ export default function HomePage() {
         {renderResults()}
 
         <section className={styles.disclaimer}>
-          <strong>Disclaimer:</strong> Verify against official OFLC and O*NET sources. Not legal
-          advice.
+          <strong>Disclaimer:</strong> For licensed attorneys and authorized staff only. Verify
+          against official OFLC and O*NET sources. Not legal advice.
         </section>
       </div>
     </main>
