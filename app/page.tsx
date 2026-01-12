@@ -402,10 +402,19 @@ export default function HomePage() {
                     ) : null}
                   </div>
                 ) : null}
-                {response.wages.proposedSalary ? (
-                  <div data-testid="proposed-salary" className={styles.muted}>
-                    Proposed: {response.wages.proposedSalary.amount} /{' '}
-                    {response.wages.proposedSalary.unit}
+                {response.wages.proposedSalary || response.wages.metWageLevel ? (
+                  <div className={styles.metaRow}>
+                    {response.wages.proposedSalary ? (
+                      <span data-testid="proposed-salary" className={styles.metaItem}>
+                        Proposed: {response.wages.proposedSalary.amount} /{' '}
+                        {response.wages.proposedSalary.unit}
+                      </span>
+                    ) : null}
+                    {response.wages.metWageLevel ? (
+                      <span data-testid="met-wage-level" className={styles.metaItem}>
+                        Met Level: {response.wages.metWageLevel.metLevel}
+                      </span>
+                    ) : null}
                   </div>
                 ) : null}
                 <table className={styles.table}>
@@ -455,18 +464,12 @@ export default function HomePage() {
                     </tr>
                   </tbody>
                 </table>
-                {response.wages.metWageLevel ? (
-                  <div data-testid="met-wage-level" className={styles.muted}>
-                    Met Level: {response.wages.metWageLevel.metLevel} (
-                    {response.wages.metWageLevel.basis})
-                    {response.wages.metWageLevel.notes?.length ? (
-                      <ul className={styles.list}>
-                        {response.wages.metWageLevel.notes.map((note: string, idx: number) => (
-                          <li key={`${note}-${idx}`}>{note}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
+                {response.wages.metWageLevel?.notes?.length ? (
+                  <ul className={styles.list}>
+                    {response.wages.metWageLevel.notes.map((note: string, idx: number) => (
+                      <li key={`${note}-${idx}`}>{note}</li>
+                    ))}
+                  </ul>
                 ) : null}
               </>
             ) : (
