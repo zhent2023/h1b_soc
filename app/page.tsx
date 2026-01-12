@@ -253,9 +253,9 @@ export default function HomePage() {
     setAddressDetails((prev) =>
       prev
         ? {
-            ...prev,
-            [field]: value,
-          }
+          ...prev,
+          [field]: value,
+        }
         : prev,
     );
     setShowAddressDetails(true);
@@ -437,7 +437,7 @@ export default function HomePage() {
                   </thead>
                   <tbody>
                     <tr>
-                      <td>I</td>
+                      <td><span className={styles.levelBadge}>I</span></td>
                       <td className={styles.tableNumber} data-testid="wage-l1-hourly">
                         {formatMoney(response.wages.level1?.hourly, 'hour')}
                       </td>
@@ -446,7 +446,7 @@ export default function HomePage() {
                       </td>
                     </tr>
                     <tr>
-                      <td>II</td>
+                      <td><span className={styles.levelBadge}>II</span></td>
                       <td className={styles.tableNumber} data-testid="wage-l2-hourly">
                         {formatMoney(response.wages.level2?.hourly, 'hour')}
                       </td>
@@ -455,7 +455,7 @@ export default function HomePage() {
                       </td>
                     </tr>
                     <tr>
-                      <td>III</td>
+                      <td><span className={styles.levelBadge}>III</span></td>
                       <td className={styles.tableNumber} data-testid="wage-l3-hourly">
                         {formatMoney(response.wages.level3?.hourly, 'hour')}
                       </td>
@@ -464,7 +464,7 @@ export default function HomePage() {
                       </td>
                     </tr>
                     <tr>
-                      <td>IV</td>
+                      <td><span className={styles.levelBadge}>IV</span></td>
                       <td className={styles.tableNumber} data-testid="wage-l4-hourly">
                         {formatMoney(response.wages.level4?.hourly, 'hour')}
                       </td>
@@ -553,17 +553,17 @@ export default function HomePage() {
                         <td data-testid="extremes-lowest">
                           {low
                             ? `${formatAreaLabel(low.area)}: ${formatMoney(
-                                low.level1?.annual,
-                                'year',
-                              )}`
+                              low.level1?.annual,
+                              'year',
+                            )}`
                             : '—'}
                         </td>
                         <td data-testid="extremes-highest">
                           {high
                             ? `${formatAreaLabel(high.area)}: ${formatMoney(
-                                high.level1?.annual,
-                                'year',
-                              )}`
+                              high.level1?.annual,
+                              'year',
+                            )}`
                             : '—'}
                         </td>
                       </tr>
