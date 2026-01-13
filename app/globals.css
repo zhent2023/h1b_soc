@@ -6,25 +6,25 @@
 
 :root {
   /* Premium Blue Tech Theme */
-  --color-ink: #f8fafc;
-  --color-muted: #b4c2d8;
-  --color-muted-strong: #e2e8f0;
-  --color-surface: rgba(18, 30, 53, 0.82);
-  --color-surface-soft: rgba(18, 30, 53, 0.68);
-  --color-surface-strong: rgba(18, 30, 53, 0.92);
-  --color-stroke: rgba(148, 163, 184, 0.28);
-  --color-stroke-strong: rgba(59, 130, 246, 0.4);
-  --color-accent: #4f8cff;
-  --color-accent-strong: #2563eb;
-  --color-sky: #38bdf8;
+  --color-ink: #f9fbff;
+  --color-muted: #c7d2e6;
+  --color-muted-strong: #e6edf5;
+  --color-surface: rgba(19, 28, 52, 0.92);
+  --color-surface-soft: rgba(24, 36, 66, 0.78);
+  --color-surface-strong: rgba(16, 24, 46, 0.96);
+  --color-stroke: rgba(148, 163, 184, 0.38);
+  --color-stroke-strong: rgba(99, 134, 255, 0.55);
+  --color-accent: #5a95ff;
+  --color-accent-strong: #2b6bff;
+  --color-sky: #5ad1ff;
   --color-purple: #1d4ed8;
   --color-amber: #f59e0b;
-  --color-warning: #fbbf24;
-  --color-danger: #ef4444;
-  --color-shell: #0b1120;
+  --color-warning: #fcd34d;
+  --color-danger: #f87171;
+  --color-shell: #0f172a;
   /* Glow effects */
-  --glow-primary: rgba(79, 140, 255, 0.35);
-  --glow-secondary: rgba(56, 189, 248, 0.25);
+  --glow-primary: rgba(90, 149, 255, 0.42);
+  --glow-secondary: rgba(90, 209, 255, 0.3);
 }
 
 body {
