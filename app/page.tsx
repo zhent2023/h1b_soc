@@ -1,20 +1,38 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { parseFullAddress, type ParsedAddress } from '../src/lib/address';
 import styles from './page.module.css';
 
 type DetectedMode = 'address' | 'address_soc' | 'soc' | 'none';
+type OccupationSuggestion = { onetCode: string; title: string };
 const confirmationStorageKey = 'lookupConfirmation';
+const onetCodePattern = /^\s*(\d{2}-\d{4}(?:\.\d{2})?)\b/;
+
+function extractOnetCode(value: string): string {
+  const match = value.match(onetCodePattern);
+  return match ? match[1] : '';
+}
+
+function formatOccupationLabel(entry: OccupationSuggestion): string {
+  return `${entry.onetCode} — ${entry.title}`;
+}
 
 export default function HomePage() {
   const router = useRouter();
   const [addressText, setAddressText] = useState('');
   const [addressDetails, setAddressDetails] = useState<ParsedAddress | null>(null);
   const [showAddressDetails, setShowAddressDetails] = useState(false);
+  const [socInput, setSocInput] = useState('');
   const [socCode, setSocCode] = useState('');
+  const [socSelectedTitle, setSocSelectedTitle] = useState<string | null>(null);
+  const [socSuggestions, setSocSuggestions] = useState<OccupationSuggestion[]>([]);
+  const [socSuggestionsOpen, setSocSuggestionsOpen] = useState(false);
+  const [socSuggestionsLoading, setSocSuggestionsLoading] = useState(false);
+  const [socSuggestionsError, setSocSuggestionsError] = useState('');
+  const [socHighlightIndex, setSocHighlightIndex] = useState(-1);
   const [salaryAmount, setSalaryAmount] = useState('');
   const [salaryUnit, setSalaryUnit] = useState<'year' | 'hour'>('year');
   const [loading, setLoading] = useState(false);
@@ -29,6 +47,8 @@ export default function HomePage() {
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [dutiesCopied, setDutiesCopied] = useState(false);
   const [welcomeName, setWelcomeName] = useState<string | null>(null);
+  const socFetchId = useRef(0);
+  const socBlurTimer = useRef<number | null>(null);
 
   const trimmedAddress = addressText.trim();
   const trimmedSoc = socCode.trim();
@@ -39,9 +59,9 @@ export default function HomePage() {
     detectedMode === 'address'
       ? 'Mode: Address only'
       : detectedMode === 'address_soc'
-        ? 'Mode: Address + SOC'
+        ? 'Mode: Address + Occupation'
         : detectedMode === 'soc'
-          ? 'Mode: SOC only'
+          ? 'Mode: Occupation only'
           : '';
   const submitLabel =
     detectedMode === 'address'
@@ -114,6 +134,73 @@ export default function HomePage() {
   }, [parsedAddress]);
 
   useEffect(() => {
+    const query = socInput.trim();
+    const selectionLabel =
+      socSelectedTitle && socCode
+        ? formatOccupationLabel({ onetCode: socCode, title: socSelectedTitle })
+        : null;
+
+    if (!query) {
+      setSocSuggestions([]);
+      setSocSuggestionsOpen(false);
+      setSocSuggestionsLoading(false);
+      setSocSuggestionsError('');
+      setSocHighlightIndex(-1);
+      return;
+    }
+
+    if (selectionLabel && query === selectionLabel) {
+      setSocSuggestions([]);
+      setSocSuggestionsOpen(false);
+      setSocSuggestionsLoading(false);
+      setSocSuggestionsError('');
+      setSocHighlightIndex(-1);
+      return;
+    }
+
+    const requestId = (socFetchId.current += 1);
+    const controller = new AbortController();
+    setSocSuggestionsLoading(true);
+    setSocSuggestionsError('');
+    setSocHighlightIndex(-1);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const url = new URL('/api/v1/onet/occupations', window.location.origin);
+        url.searchParams.set('q', query);
+        const res = await fetch(url.toString(), {
+          signal: controller.signal,
+          credentials: 'include',
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error ?? 'Occupation search failed.');
+        }
+        if (socFetchId.current !== requestId) {
+          return;
+        }
+        const items = Array.isArray(data.items) ? data.items : [];
+        setSocSuggestions(items);
+      } catch (err) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setSocSuggestionsError(err instanceof Error ? err.message : 'Occupation search failed.');
+        setSocSuggestions([]);
+      } finally {
+        if (socFetchId.current === requestId) {
+          setSocSuggestionsLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [socInput, socCode, socSelectedTitle]);
+
+  useEffect(() => {
     if (!response || response.kind !== 'geo_needs_confirmation') {
       setCandidateResults([]);
       setCandidateQuery('');
@@ -135,7 +222,10 @@ export default function HomePage() {
         setLastRequest(saved.lastRequest);
         setResponse(saved.response ?? null);
         setAddressText(saved.lastRequest.address?.fullText ?? '');
-        setSocCode(saved.lastRequest.socCode ?? '');
+        const restoredSoc = saved.lastRequest.socCode ?? '';
+        setSocCode(restoredSoc);
+        setSocInput(restoredSoc);
+        setSocSelectedTitle(null);
         if (saved.lastRequest.proposedSalary !== undefined) {
           setSalaryAmount(String(saved.lastRequest.proposedSalary));
         }
@@ -180,6 +270,64 @@ export default function HomePage() {
     }
   };
 
+  const handleSocInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    if (socSelectedTitle) {
+      const selectedLabel = formatOccupationLabel({ onetCode: socCode, title: socSelectedTitle });
+      if (value !== selectedLabel) {
+        setSocSelectedTitle(null);
+      }
+    }
+    setSocInput(value);
+    setSocCode(extractOnetCode(value));
+    setSocSuggestionsOpen(true);
+  };
+
+  const handleSocSelect = (entry: OccupationSuggestion) => {
+    const label = formatOccupationLabel(entry);
+    setSocInput(label);
+    setSocCode(entry.onetCode);
+    setSocSelectedTitle(entry.title);
+    setSocSuggestions([]);
+    setSocSuggestionsOpen(false);
+    setSocSuggestionsError('');
+    setSocHighlightIndex(-1);
+  };
+
+  const handleSocKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!socSuggestionsOpen || socSuggestions.length === 0) {
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setSocHighlightIndex((prev) => {
+        const next = prev + 1;
+        return next >= socSuggestions.length ? 0 : next;
+      });
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSocHighlightIndex((prev) => {
+        const next = prev - 1;
+        return next < 0 ? socSuggestions.length - 1 : next;
+      });
+      return;
+    }
+    if (event.key === 'Enter' && socHighlightIndex >= 0) {
+      event.preventDefault();
+      const entry = socSuggestions[socHighlightIndex];
+      if (entry) {
+        handleSocSelect(entry);
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      setSocSuggestionsOpen(false);
+      setSocHighlightIndex(-1);
+    }
+  };
+
   const buildRequestBody = (override?: { areaCode?: string }) => {
     const body: any = {};
     if (hasAddress) {
@@ -214,7 +362,7 @@ export default function HomePage() {
     setLoading(true);
     setError('');
     if (detectedMode === 'none') {
-      setError('Paste an address, enter a SOC code, or both.');
+      setError('Paste an address, enter an occupation code, or both.');
       setLoading(false);
       return;
     }
@@ -485,14 +633,14 @@ export default function HomePage() {
             ) : (
               <div className={styles.cardHint}>
                 {!hasAddress && !hasSoc
-                  ? 'Enter an address and SOC code to see prevailing wages.'
+                  ? 'Enter an address and occupation code to see prevailing wages.'
                   : !hasSoc
-                    ? 'Add a SOC code to see prevailing wage levels.'
+                    ? 'Add an occupation code to see prevailing wage levels.'
                     : response.kind === 'geo_needs_confirmation'
                       ? 'Confirm a wage area to see prevailing wages.'
                       : !hasAddress
                         ? 'Add an address to get area-specific wages.'
-                        : 'Run an address + SOC lookup to see prevailing wages.'}
+                        : 'Run an address + occupation lookup to see prevailing wages.'}
               </div>
             )}
           </div>
@@ -521,10 +669,10 @@ export default function HomePage() {
             ) : (
               <div className={styles.cardHint}>
                 {!hasSoc
-                  ? 'Add a SOC code to see O*NET tasks.'
+                  ? 'Add an occupation code to see O*NET tasks.'
                   : response.kind === 'geo_needs_confirmation'
                     ? 'Confirm the area to unlock tasks.'
-                    : 'Tasks are shown when a SOC code is provided.'}
+                    : 'Tasks are shown when an occupation code is provided.'}
               </div>
             )}
           </div>
@@ -574,8 +722,8 @@ export default function HomePage() {
             ) : (
               <div className={styles.cardHint}>
                 {!hasSoc
-                  ? 'Enter a SOC code to compare wage extremes across areas.'
-                  : 'Extremes are available when a SOC code is provided.'}
+                  ? 'Enter an occupation code to compare wage extremes across areas.'
+                  : 'Extremes are available when an occupation code is provided.'}
               </div>
             )}
           </div>
@@ -693,7 +841,7 @@ export default function HomePage() {
               <h1 className={styles.title}>H1B SOC</h1>
               <span className={styles.datasetTag}>7/2025-6/2026</span>
             </div>
-            <p className={styles.subtitle}>Query wage and SOC data with address and SOC inputs.</p>
+            <p className={styles.subtitle}>Query wage and O*NET data with address and occupation inputs.</p>
           </div>
           {authMode === 'invite' && authEmail ? (
             <div className={styles.authCard}>
@@ -726,7 +874,7 @@ export default function HomePage() {
               </div>
             ) : (
               <div className={styles.emptyHint} data-testid="empty-hint">
-                Paste an address, enter a SOC code, or both.
+                Paste an address, enter an occupation code, or both.
               </div>
             )}
 
@@ -816,16 +964,78 @@ export default function HomePage() {
               ) : null}
 
               <label className={styles.field}>
-                <span className={styles.label}>SOC Code</span>
-                <input
-                  className={styles.input}
-                  value={socCode}
-                  onChange={(event) => setSocCode(event.target.value)}
-                  placeholder="15-1252"
-                  data-testid="soc-input"
-                />
+                <span className={styles.label}>Occupation (O*NET) Code and Title</span>
+                <div className={styles.autocomplete}>
+                  <input
+                    className={styles.input}
+                    value={socInput}
+                    onChange={handleSocInputChange}
+                    onFocus={() => {
+                      if (socBlurTimer.current) {
+                        window.clearTimeout(socBlurTimer.current);
+                        socBlurTimer.current = null;
+                      }
+                      if (socSuggestions.length) {
+                        setSocSuggestionsOpen(true);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (socBlurTimer.current) {
+                        window.clearTimeout(socBlurTimer.current);
+                      }
+                      socBlurTimer.current = window.setTimeout(() => {
+                        setSocSuggestionsOpen(false);
+                      }, 150);
+                    }}
+                    onKeyDown={handleSocKeyDown}
+                    placeholder="15-1211.00 or software"
+                    data-testid="soc-input"
+                    aria-autocomplete="list"
+                    aria-expanded={socSuggestionsOpen}
+                    aria-haspopup="listbox"
+                  />
+                  {socSuggestionsOpen ? (
+                    <div className={styles.suggestionsPanel} role="listbox" data-testid="soc-suggestions">
+                      {socSuggestionsLoading ? (
+                        <div className={styles.suggestionsStatus}>Searching occupations...</div>
+                      ) : null}
+                      {socSuggestionsError ? (
+                        <div className={styles.suggestionsError}>{socSuggestionsError}</div>
+                      ) : null}
+                      {!socSuggestionsLoading && !socSuggestionsError ? (
+                        socSuggestions.length ? (
+                          <ul className={styles.suggestionsList}>
+                            {socSuggestions.map((entry, index) => {
+                              const isActive = index === socHighlightIndex;
+                              return (
+                                <li key={entry.onetCode}>
+                                  <button
+                                    type="button"
+                                    className={`${styles.suggestionItem} ${isActive ? styles.suggestionItemActive : ''}`}
+                                    onMouseDown={(event) => {
+                                      event.preventDefault();
+                                      handleSocSelect(entry);
+                                    }}
+                                    onMouseEnter={() => setSocHighlightIndex(index)}
+                                    role="option"
+                                    aria-selected={isActive}
+                                  >
+                                    <span className={styles.suggestionCode}>{entry.onetCode}</span>
+                                    <span className={styles.suggestionTitle}>{entry.title}</span>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : (
+                          <div className={styles.suggestionsEmpty}>No matches found.</div>
+                        )
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
                 <span className={styles.helper} data-testid="soc-help">
-                  Wages use SOC-6; duties use O*NET 8-digit with fallback.
+                  Wages use SOC-6; tasks use O*NET 8-digit with fallback.
                 </span>
                 {socSuffixMatch ? (
                   <span className={styles.hintStrong} data-testid="soc-suffix-note">
