@@ -22,6 +22,7 @@ model DatasetVersion {
   socTitles         SocTitle[]
   onetSocMaps       OnetSocMap[]
   onetDuties        OnetDuty[]
+  onetOccupations   OnetOccupation[]
   geoCounties       GeoCounty[]
   geoCountyToCbsas  GeoCountyToCbsa[]
   geoCbsas          GeoCbsa[]
@@ -171,6 +172,19 @@ model OnetDuty {
 
   @@index([datasetVersionId, onetCode])
   @@index([datasetVersionId, onetCode, sortOrder])
+}
+
+model OnetOccupation {
+  id               String   @id @default(uuid()) @db.Uuid
+  datasetVersionId String   @db.Uuid
+  onetCode         String
+  title            String
+  createdAt        DateTime @default(now())
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([datasetVersionId, onetCode])
+  @@index([datasetVersionId, title])
 }
 
 model GeoCounty {

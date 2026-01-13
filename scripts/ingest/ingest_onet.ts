@@ -59,6 +59,7 @@ async function main() {
   const label = getArgValue('--label');
   const dutyFile = getArgValue('--dutyFile');
   const mapFile = getArgValue('--mapFile');
+  const occupationFile = getArgValue('--occupationFile');
 
   const resolvedZipPath = await resolveZipPath({ zipPath, zipUrl });
   const zip = await openZip(resolvedZipPath);
@@ -68,15 +69,22 @@ async function main() {
     (dutyFile ? pickEntry(entries, [/task/i, /duty/i], dutyFile) : null) ??
     entries.find((entry) => /task statements/i.test(entry.path)) ??
     pickEntry(entries, [/task/i, /duty/i], dutyFile);
-  const mapEntry = pickEntry(
+  const occupationEntry =
+    (occupationFile ? pickEntry(entries, [/occupation data/i], occupationFile) : null) ??
+    entries.find((entry) => /occupation data/i.test(entry.path)) ??
+    pickEntry(entries, [/occupation data/i, /occupation/i], occupationFile, dutyEntry?.path);
+  let mapEntry = pickEntry(
     entries,
-    [/soc/i, /crosswalk/i, /occupation/i, /mapping/i],
+    [/soc/i, /crosswalk/i, /mapping/i],
     mapFile,
-    dutyEntry?.path,
+    occupationEntry?.path ?? dutyEntry?.path,
   );
+  if (!mapEntry && occupationEntry) {
+    mapEntry = occupationEntry;
+  }
 
-  if (!dutyEntry && !mapEntry) {
-    throw new Error('No O*NET files detected (duty or mapping).');
+  if (!dutyEntry && !mapEntry && !occupationEntry) {
+    throw new Error('No O*NET files detected (duty, occupation, or mapping).');
   }
 
   const versionLabel = label ?? path.basename(resolvedZipPath);
@@ -126,6 +134,47 @@ async function main() {
     if (dutyBatch.length) {
       await prisma.onetDuty.createMany({
         data: dutyBatch.splice(0, dutyBatch.length),
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  let occupationCount = 0;
+  if (occupationEntry) {
+    const occupationBatch: Array<any> = [];
+    await parseCsvStream({
+      stream: occupationEntry.stream(),
+      delimiter: inferDelimiter(occupationEntry.path),
+      onRow: async (row) => {
+        const onetCode =
+          getField(row, ['onet_soc_code', 'onet_code', 'onet_soc', 'onet-soc code']) ??
+          getField(row, ['onet']);
+        const title =
+          getField(row, ['title', 'occupation_title', 'occupation', 'soc_title']) ??
+          (onetCode ? `O*NET ${onetCode}` : undefined);
+
+        if (!onetCode || !title) {
+          return;
+        }
+
+        occupationBatch.push({
+          datasetVersionId: datasetVersion.id,
+          onetCode,
+          title,
+        });
+        occupationCount += 1;
+
+        if (occupationBatch.length >= BATCH_SIZE) {
+          await prisma.onetOccupation.createMany({
+            data: occupationBatch.splice(0, occupationBatch.length),
+            skipDuplicates: true,
+          });
+        }
+      },
+    });
+    if (occupationBatch.length) {
+      await prisma.onetOccupation.createMany({
+        data: occupationBatch.splice(0, occupationBatch.length),
         skipDuplicates: true,
       });
     }
@@ -208,6 +257,7 @@ async function main() {
       metaJson: {
         source: resolvedZipPath,
         duties: dutyCount,
+        occupations: occupationCount,
         mappings: mapCount,
         socTitles: socTitleCount,
       },

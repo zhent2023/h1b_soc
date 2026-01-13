@@ -309,6 +309,26 @@ async function main() {
   });
 
   const onetCodes = ['15-1252.00', '15-1252.01'];
+  const onetOccupationFixtures = [
+    { onetCode: '15-1252.00', title: 'Software Developers' },
+    { onetCode: '15-1252.01', title: 'Software Developers, Applications' },
+  ];
+
+  const additionalOnetOccupations = socFixtures
+    .filter((soc) => soc.socCode !== '15-1252')
+    .map((soc) => ({
+      onetCode: `${soc.socCode}.00`,
+      title: soc.title,
+    }));
+
+  await prisma.onetOccupation.createMany({
+    data: [...onetOccupationFixtures, ...additionalOnetOccupations].map((entry) => ({
+      datasetVersionId: onetVersion.id,
+      onetCode: entry.onetCode,
+      title: entry.title,
+    })),
+    skipDuplicates: true,
+  });
 
   await prisma.onetSocMap.createMany({
     data: onetCodes.map((onetCode) => ({
