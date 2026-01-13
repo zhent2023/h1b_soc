@@ -749,6 +749,31 @@
   gap: 12px;
 }
 
+.cardHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.linkButton {
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--color-sky);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.linkButton:hover {
+  border-color: var(--color-accent);
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--color-ink);
+}
+
 .cardHint {
   font-size: 13px;
   color: var(--color-muted-strong);

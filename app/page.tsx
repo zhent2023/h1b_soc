@@ -72,6 +72,15 @@ export default function HomePage() {
           ? 'Find Extremes'
           : 'Lookup';
   const socSuffixMatch = trimmedSoc.match(/^(\d{2}-\d{4})\.(\d{2})$/);
+  const onetSummaryCode =
+    /^\d{2}-\d{4}\.\d{2}$/.test(trimmedSoc)
+      ? trimmedSoc
+      : /^\d{2}-\d{4}$/.test(trimmedSoc)
+        ? `${trimmedSoc}.00`
+        : null;
+  const onetSummaryUrl = onetSummaryCode
+    ? `https://www.onetonline.org/link/summary/${onetSummaryCode}`
+    : null;
   const salaryNumber = Number(salaryAmount);
   const salaryWarning =
     detectedMode === 'address_soc' &&
@@ -648,15 +657,27 @@ export default function HomePage() {
           <div className={`${styles.card} ${styles.spanTwo}`}>
             <div className={styles.cardHeaderRow}>
               <h3 className={styles.cardTitle}>Tasks</h3>
-              {hasDuties ? (
-                <button
-                  type="button"
-                  className={`${styles.copyButton} ${dutiesCopied ? styles.copyButtonSuccess : ''}`}
-                  onClick={handleCopyDuties}
-                >
-                  {dutiesCopied ? 'Copied' : 'Copy tasks'}
-                </button>
-              ) : null}
+              <div className={styles.cardHeaderActions}>
+                {onetSummaryUrl ? (
+                  <a
+                    className={styles.linkButton}
+                    href={onetSummaryUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    O*NET profile
+                  </a>
+                ) : null}
+                {hasDuties ? (
+                  <button
+                    type="button"
+                    className={`${styles.copyButton} ${dutiesCopied ? styles.copyButtonSuccess : ''}`}
+                    onClick={handleCopyDuties}
+                  >
+                    {dutiesCopied ? 'Copied' : 'Copy tasks'}
+                  </button>
+                ) : null}
+              </div>
             </div>
             {hasDuties ? (
               <ul className={styles.list} data-testid="duties-list">
