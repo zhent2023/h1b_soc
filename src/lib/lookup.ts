@@ -33,6 +33,9 @@ export interface LookupRequest {
   salaryUnit?: SalaryUnit;
   override?: {
     areaCode?: string;
+    countyFips?: string;
+    countyName?: string;
+    countyTownName?: string;
   };
 }
 
@@ -402,6 +405,17 @@ export async function lookup(
 
     explainSummary.push(...geocodeResult.explain);
 
+    const overrideCountyName = req.override?.countyName ?? req.override?.countyTownName;
+    const overrideCountyFips = req.override?.countyFips;
+    const geocodeForResolve =
+      overrideCountyName || overrideCountyFips
+        ? {
+            ...geocodeResult,
+            countyName: overrideCountyName ?? geocodeResult.countyName,
+            countyFips: overrideCountyFips ?? geocodeResult.countyFips,
+          }
+        : geocodeResult;
+
     if (cityCountySuggestions?.length) {
       const extremes = soc6
         ? await getSocExtremes({
@@ -424,9 +438,9 @@ export async function lookup(
         featureFlags,
         explain: { summary: getSummary() },
         geo: {
-          geocode: geocodeResult,
-          countyName: geocodeResult.countyName,
-          placeName: geocodeResult.placeName,
+          geocode: geocodeForResolve,
+          countyName: geocodeForResolve.countyName,
+          placeName: geocodeForResolve.placeName,
         },
         confirmation: {
           suggestions: cityCountySuggestions,
@@ -440,7 +454,7 @@ export async function lookup(
     resolveResult = await resolveOflcArea({
       prisma,
       datasetVersionId: oflcVersionId,
-      geocode: geocodeResult,
+      geocode: geocodeForResolve,
       overrideAreaCode: req.override?.areaCode,
       featureTownMatching: parseBoolean(process.env.FEATURE_TOWN_MATCHING, true),
       cbsaVersionId,
@@ -483,10 +497,10 @@ export async function lookup(
 
     const geoArea = resolveResult.area;
     const geo = {
-      geocode: geocodeResult,
+      geocode: geocodeForResolve,
       area: geoArea,
-      countyName: geocodeResult.countyName,
-      placeName: geocodeResult.placeName,
+      countyName: geocodeForResolve.countyName,
+      placeName: geocodeForResolve.placeName,
       cbsa: resolveResult.cbsa,
     };
 

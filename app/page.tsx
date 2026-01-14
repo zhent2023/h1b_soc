@@ -287,9 +287,13 @@ export default function HomePage() {
     code: string;
     title: string | null;
   } | null>(null);
+  const [recommendOpen, setRecommendOpen] = useState(false);
+  const [socInputFlash, setSocInputFlash] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const stateListboxId = useId();
   const socListboxId = useId();
+  const socInputRef = useRef<HTMLInputElement | null>(null);
+  const socInputFlashTimer = useRef<number | null>(null);
 
   const addressMeta = useMemo(() => computeAddressMeta(addressDetails), [addressDetails]);
   const trimmedSoc = socCode.trim();
@@ -387,6 +391,14 @@ export default function HomePage() {
       active = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    return () => {
+      if (socInputFlashTimer.current) {
+        window.clearTimeout(socInputFlashTimer.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const query = socInput.trim();
@@ -778,6 +790,18 @@ export default function HomePage() {
     setSocHighlightIndex(-1);
     setRecommendSelected({ code: item.matchedOnetCode, title });
     updateFocusOnetParam(item.matchedOnetCode);
+    setRecommendOpen(false);
+    if (socInputFlashTimer.current) {
+      window.clearTimeout(socInputFlashTimer.current);
+    }
+    setSocInputFlash(true);
+    if (socInputRef.current) {
+      socInputRef.current.focus();
+      socInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    socInputFlashTimer.current = window.setTimeout(() => {
+      setSocInputFlash(false);
+    }, 1400);
   };
 
   const handleRecommendSubmit = async () => {
@@ -857,7 +881,11 @@ export default function HomePage() {
     };
   };
 
-  const buildRequestBody = (override?: { areaCode?: string }) => {
+  const buildRequestBody = (override?: {
+    areaCode?: string;
+    countyFips?: string;
+    countyTownName?: string;
+  }) => {
     const body: any = {};
     const addressPayload = buildAddressPayload();
     if (addressPayload) {
@@ -873,7 +901,11 @@ export default function HomePage() {
       }
     }
     if (override?.areaCode) {
-      body.override = { areaCode: override.areaCode };
+      body.override = {
+        areaCode: override.areaCode,
+        countyFips: override.countyFips,
+        countyTownName: override.countyTownName,
+      };
     }
     return body;
   };
@@ -912,7 +944,11 @@ export default function HomePage() {
     }
   };
 
-  const runLookup = async (override?: { areaCode?: string }) => {
+  const runLookup = async (override?: {
+    areaCode?: string;
+    countyFips?: string;
+    countyTownName?: string;
+  }) => {
     setLoading(true);
     setError('');
     if (detectedMode === 'none') {
@@ -945,10 +981,19 @@ export default function HomePage() {
     }
   };
 
-  const resendWithOverride = (areaCode: string) => {
+  const resendWithOverride = (entry: {
+    areaCode: string;
+    countyFips?: string | null;
+    countyTownName?: string | null;
+  }) => {
     const base = lastRequest ?? buildRequestBody();
-    runLookup({ areaCode });
-    setLastRequest({ ...base, override: { areaCode } });
+    const override = {
+      areaCode: entry.areaCode,
+      countyFips: entry.countyFips ?? undefined,
+      countyTownName: entry.countyTownName ?? undefined,
+    };
+    runLookup(override);
+    setLastRequest({ ...base, override });
   };
 
   const updateAddressDetail = (field: keyof AddressFields, value: string) => {
@@ -1026,7 +1071,7 @@ export default function HomePage() {
   const renderResults = () => {
     if (!response) return null;
 
-    const countyName = response.geo?.geocode?.countyName ?? null;
+    const countyName = response.geo?.countyName ?? response.geo?.geocode?.countyName ?? null;
     const wageAreaName = response.geo?.area?.areaName ?? null;
     const placeName = response.geo?.geocode?.placeName ?? null;
     const stateAb = response.geo?.geocode?.stateAb ?? response.geo?.area?.stateAb ?? null;
@@ -1082,7 +1127,7 @@ export default function HomePage() {
                     <button
                       className={styles.chipButton}
                       type="button"
-                      onClick={() => resendWithOverride(entry.areaCode)}
+                    onClick={() => resendWithOverride(entry)}
                     >
                       Use
                     </button>
@@ -1130,7 +1175,7 @@ export default function HomePage() {
                             <button
                               className={styles.chipButton}
                               type="button"
-                              onClick={() => resendWithOverride(entry.areaCode)}
+                          onClick={() => resendWithOverride(entry)}
                             >
                               Use
                             </button>
@@ -1608,7 +1653,8 @@ export default function HomePage() {
                 <span className={styles.label}>Occupation (O*NET) Code and Title</span>
                 <div className={styles.autocomplete}>
                   <input
-                    className={styles.input}
+                    ref={socInputRef}
+                    className={`${styles.input} ${socInputFlash ? styles.inputHighlight : ''}`}
                     value={socInput}
                     onChange={handleSocInputChange}
                     onFocus={() => {
@@ -1629,7 +1675,7 @@ export default function HomePage() {
                       }, 150);
                     }}
                     onKeyDown={handleSocKeyDown}
-                    placeholder="15-1211.00 or software"
+                    placeholder="Type search term here"
                     data-testid="soc-input"
                     role="combobox"
                     aria-autocomplete="list"
@@ -1697,196 +1743,219 @@ export default function HomePage() {
             </label>
 
             {recommenderEnabled ? (
-              <div className={`${styles.recommenderPanel} ${styles.formSpan}`} data-testid="soc-recommender">
-                <div className={styles.recommenderHeader}>
-                  <div>
-                    <div className={styles.recommenderHeading}>
-                      <span className={styles.recommenderHeadingTitle}>Recommend O*NET codes</span>
-                      <span className={styles.recommenderTag}>Top 6</span>
+              recommendOpen ? (
+                <div className={`${styles.recommenderPanel} ${styles.formSpan}`} data-testid="soc-recommender">
+                  <div className={styles.recommenderHeader}>
+                    <div>
+                      <div className={styles.recommenderHeading}>
+                        <span className={styles.recommenderHeadingTitle}>Recommend O*NET codes</span>
+                        <span className={styles.recommenderTag}>Top 6</span>
+                      </div>
+                      <div className={styles.helper}>
+                        Paste job duties and click Recommend to get Top 6 O*NET codes.
+                      </div>
                     </div>
-                    <div className={styles.helper}>
-                      Paste job duties and click Recommend to get Top 6 O*NET codes.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className={`${styles.primaryButton} ${styles.recommenderAction}`}
-                    onClick={handleRecommendSubmit}
-                    disabled={recommendLoading}
-                    data-testid="soc-recommender-submit"
-                  >
-                    {recommendLoading ? 'Matching...' : 'Recommend Top 6 O*NET Codes'}
-                  </button>
-                </div>
-                <textarea
-                  id="soc-recommender-input"
-                  className={`${styles.textarea} ${styles.recommenderTextarea}`}
-                  rows={4}
-                  value={dutiesInput}
-                  onChange={(event) => setDutiesInput(event.target.value)}
-                  placeholder="Paste job duties here"
-                  data-testid="soc-recommender-input"
-                />
-                {recommendError ? (
-                  <div className={styles.error} data-testid="soc-recommender-error">
-                    {recommendError}
-                  </div>
-                ) : null}
-                {recommendWarnings.length ? (
-                  <div className={styles.warning} data-testid="soc-recommender-warnings">
-                    {recommendWarnings.join(' ')}
-                  </div>
-                ) : null}
-                {recommendMeta?.inputTruncated ? (
-                  <div className={styles.warning} data-testid="soc-recommender-truncated">
-                    Duties were truncated for matching.
-                  </div>
-                ) : null}
-                {recommendSelected ? (
-                  <div className={styles.recommenderBanner} data-testid="soc-recommend-banner">
-                    <span>
-                      Selected O*NET:{' '}
-                      <strong>{recommendSelected.code}</strong>
-                      {recommendSelected.title ? ` — ${recommendSelected.title}` : ''}
-                    </span>
                     <button
                       type="button"
                       className={styles.ghostButton}
-                      onClick={() => clearRecommendSelection()}
+                      onClick={() => setRecommendOpen(false)}
                     >
-                      Clear
+                      Hide
                     </button>
                   </div>
-                ) : null}
-                {recommendations.length ? (
-                  <div className={styles.recommenderGrid} data-testid="soc-recommend-list">
-                    {recommendations.map((item) => {
-                      const title = item.matchedOnetTitle ?? item.socTitle ?? 'Unknown title';
-                      const hasMoreDuties =
-                        item.dutiesAvailable && item.dutiesCount > dutiesPreviewCount;
-                      const isExpanded =
-                        !hasMoreDuties || recommendExpanded === item.matchedOnetCode;
-                      const showDutiesList = !isMobile || isExpanded;
-                      const dutiesToShow = isExpanded
-                        ? item.duties
-                        : item.duties.slice(0, dutiesPreviewCount);
-                      const remainingDuties = Math.max(item.dutiesCount - dutiesPreviewCount, 0);
-                      const isSelected = recommendSelected?.code === item.matchedOnetCode;
-                      const confidenceValue =
-                        item.confidence ?? item.similarity;
-                      const wagePreview = item.wageAvailable
-                        ? `${formatHourlyPreview(item.wageLevel1Hourly)} / hr | ${formatAnnualPreview(
-                          item.wageLevel1Annual,
-                        )} / yr`
-                        : 'No wage available';
-                      return (
-                        <div
-                          key={item.matchedOnetCode}
-                          className={styles.recommenderCard}
-                          role="button"
-                          tabIndex={0}
-                          data-testid="soc-recommend-card"
-                          data-onet-code={item.matchedOnetCode}
-                          onClick={() => handleRecommendSelect(item)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              handleRecommendSelect(item);
-                            }
-                          }}
-                        >
-                          <div className={styles.recommenderCardHeader}>
-                            <div>
-                              <div className={styles.recommenderCode}>{item.matchedOnetCode}</div>
-                              <div className={styles.recommenderTitle}>{title}</div>
-                            </div>
-                            {isSelected ? (
-                              <span className={styles.recommenderSelected}>✓ Selected</span>
-                            ) : (
-                              <button
-                                type="button"
-                                className={`${styles.primaryButton} ${styles.recommenderSelect}`}
-                                data-testid="soc-recommend-select"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleRecommendSelect(item);
-                                }}
-                              >
-                                Select
-                              </button>
-                            )}
-                          </div>
-                          <div className={styles.recommenderWage}>
-                            <div className={styles.recommenderWageText} data-testid="soc-recommend-wage">
-                              <span className={styles.recommenderWageLabel}>Lv1 Prevailing Wage:</span>
-                              <span className={styles.recommenderWageValue}>{wagePreview}</span>
-                            </div>
-                            {item.wageHasDataQualityIssue ? (
-                              <span
-                                className={styles.recommenderQuality}
-                                data-testid="soc-recommend-quality"
-                              >
-                                Data quality flag
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className={styles.recommenderMetaRow}>
-                            <span className={styles.recommenderMetaItem}>
-                              Confidence: {formatMatchPercent(confidenceValue)}
-                            </span>
-                          </div>
-                          <div className={styles.recommenderDuties}>
-                            {item.dutiesAvailable ? (
-                              showDutiesList ? (
-                                <ul
-                                  className={`${styles.recommenderDutiesList} ${isExpanded ? styles.recommenderDutiesExpanded : styles.recommenderDutiesCollapsed}`}
-                                  data-testid="soc-recommend-duties"
-                                >
-                                  {dutiesToShow.map((duty, idx) => (
-                                    <li
-                                      key={`${item.matchedOnetCode}-${idx}`}
-                                      className={`${styles.recommenderDutyItem} ${isExpanded ? styles.recommenderDutyExpanded : styles.recommenderDutyCollapsed}`}
-                                    >
-                                      {duty}
-                                    </li>
-                                  ))}
-                                </ul>
+                  <textarea
+                    id="soc-recommender-input"
+                    className={`${styles.textarea} ${styles.recommenderTextarea}`}
+                    rows={4}
+                    value={dutiesInput}
+                    onChange={(event) => setDutiesInput(event.target.value)}
+                    placeholder="Paste job duties here"
+                    data-testid="soc-recommender-input"
+                  />
+                  <div className={styles.recommenderActions}>
+                    <button
+                      type="button"
+                      className={`${styles.primaryButton} ${styles.recommenderAction}`}
+                      onClick={handleRecommendSubmit}
+                      disabled={recommendLoading}
+                      data-testid="soc-recommender-submit"
+                    >
+                      {recommendLoading ? 'Matching...' : 'Recommend Top 6 O*NET Codes'}
+                    </button>
+                  </div>
+                  {recommendError ? (
+                    <div className={styles.error} data-testid="soc-recommender-error">
+                      {recommendError}
+                    </div>
+                  ) : null}
+                  {recommendWarnings.length ? (
+                    <div className={styles.warning} data-testid="soc-recommender-warnings">
+                      {recommendWarnings.join(' ')}
+                    </div>
+                  ) : null}
+                  {recommendMeta?.inputTruncated ? (
+                    <div className={styles.warning} data-testid="soc-recommender-truncated">
+                      Duties were truncated for matching.
+                    </div>
+                  ) : null}
+                  {recommendSelected ? (
+                    <div className={styles.recommenderBanner} data-testid="soc-recommend-banner">
+                      <span>
+                        Selected O*NET:{' '}
+                        <strong>{recommendSelected.code}</strong>
+                        {recommendSelected.title ? ` — ${recommendSelected.title}` : ''}
+                      </span>
+                      <button
+                        type="button"
+                        className={styles.ghostButton}
+                        onClick={() => clearRecommendSelection()}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : null}
+                  {recommendations.length ? (
+                    <div className={styles.recommenderGrid} data-testid="soc-recommend-list">
+                      {recommendations.map((item) => {
+                        const title = item.matchedOnetTitle ?? item.socTitle ?? 'Unknown title';
+                        const hasMoreDuties =
+                          item.dutiesAvailable && item.dutiesCount > dutiesPreviewCount;
+                        const isExpanded =
+                          !hasMoreDuties || recommendExpanded === item.matchedOnetCode;
+                        const showDutiesList = !isMobile || isExpanded;
+                        const dutiesToShow = isExpanded
+                          ? item.duties
+                          : item.duties.slice(0, dutiesPreviewCount);
+                        const remainingDuties = Math.max(item.dutiesCount - dutiesPreviewCount, 0);
+                        const isSelected = recommendSelected?.code === item.matchedOnetCode;
+                        const confidenceValue =
+                          item.confidence ?? item.similarity;
+                        const wagePreview = item.wageAvailable
+                          ? `${formatHourlyPreview(item.wageLevel1Hourly)} / hr | ${formatAnnualPreview(
+                            item.wageLevel1Annual,
+                          )} / yr`
+                          : 'No wage available';
+                        return (
+                          <div
+                            key={item.matchedOnetCode}
+                            className={styles.recommenderCard}
+                            role="button"
+                            tabIndex={0}
+                            data-testid="soc-recommend-card"
+                            data-onet-code={item.matchedOnetCode}
+                            onClick={() => handleRecommendSelect(item)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                handleRecommendSelect(item);
+                              }
+                            }}
+                          >
+                            <div className={styles.recommenderCardHeader}>
+                              <div>
+                                <div className={styles.recommenderCode}>{item.matchedOnetCode}</div>
+                                <div className={styles.recommenderTitle}>{title}</div>
+                              </div>
+                              {isSelected ? (
+                                <span className={styles.recommenderSelected}>✓ Selected</span>
                               ) : (
-                                <div className={styles.recommenderCollapsed}>
-                                  Duties available ({item.dutiesCount})
-                                </div>
-                              )
-                            ) : (
-                              <div className={styles.recommenderCollapsed}>No duties available.</div>
-                            )}
-                            {item.dutiesAvailable && hasMoreDuties ? (
-                              <button
-                                type="button"
-                                className={`${styles.secondaryButton} ${styles.recommenderToggle}`}
-                                data-testid="soc-recommend-duties-toggle"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setRecommendExpanded((prev) =>
-                                    prev === item.matchedOnetCode ? null : item.matchedOnetCode,
-                                  );
-                                }}
-                              >
-                                {isExpanded
-                                  ? 'Hide duties'
-                                  : `Show ${remainingDuties} more duties`}
-                              </button>
-                            ) : null}
+                                <button
+                                  type="button"
+                                  className={`${styles.primaryButton} ${styles.recommenderSelect}`}
+                                  data-testid="soc-recommend-select"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleRecommendSelect(item);
+                                  }}
+                                >
+                                  Select
+                                </button>
+                              )}
+                            </div>
+                            <div className={styles.recommenderWage}>
+                              <div className={styles.recommenderWageText} data-testid="soc-recommend-wage">
+                                <span className={styles.recommenderWageLabel}>Lv1 Prevailing Wage:</span>
+                                <span className={styles.recommenderWageValue}>{wagePreview}</span>
+                              </div>
+                              {item.wageHasDataQualityIssue ? (
+                                <span
+                                  className={styles.recommenderQuality}
+                                  data-testid="soc-recommend-quality"
+                                >
+                                  Data quality flag
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className={styles.recommenderMetaRow}>
+                              <span className={styles.recommenderMetaItem}>
+                                Confidence: {formatMatchPercent(confidenceValue)}
+                              </span>
+                            </div>
+                            <div className={styles.recommenderDuties}>
+                              {item.dutiesAvailable ? (
+                                showDutiesList ? (
+                                  <ul
+                                    className={`${styles.recommenderDutiesList} ${isExpanded ? styles.recommenderDutiesExpanded : styles.recommenderDutiesCollapsed}`}
+                                    data-testid="soc-recommend-duties"
+                                  >
+                                    {dutiesToShow.map((duty, idx) => (
+                                      <li
+                                        key={`${item.matchedOnetCode}-${idx}`}
+                                        className={`${styles.recommenderDutyItem} ${isExpanded ? styles.recommenderDutyExpanded : styles.recommenderDutyCollapsed}`}
+                                      >
+                                        {duty}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <div className={styles.recommenderCollapsed}>
+                                    Duties available ({item.dutiesCount})
+                                  </div>
+                                )
+                              ) : (
+                                <div className={styles.recommenderCollapsed}>No duties available.</div>
+                              )}
+                              {item.dutiesAvailable && hasMoreDuties ? (
+                                <button
+                                  type="button"
+                                  className={`${styles.secondaryButton} ${styles.recommenderToggle}`}
+                                  data-testid="soc-recommend-duties-toggle"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setRecommendExpanded((prev) =>
+                                      prev === item.matchedOnetCode ? null : item.matchedOnetCode,
+                                    );
+                                  }}
+                                >
+                                  {isExpanded
+                                    ? 'Hide duties'
+                                    : `Show ${remainingDuties} more duties`}
+                                </button>
+                              ) : null}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : !recommendLoading && dutiesInput.trim() ? (
-                  <div className={styles.recommenderEmpty} data-testid="soc-recommend-empty">
-                    No recommendations yet. Click “Recommend O*NET Codes” to search.
-                  </div>
-                ) : null}
-              </div>
+                        );
+                      })}
+                    </div>
+                  ) : !recommendLoading && dutiesInput.trim() ? (
+                    <div className={styles.recommenderEmpty} data-testid="soc-recommend-empty">
+                      No recommendations yet. Click “Recommend O*NET Codes” to search.
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className={`${styles.recommenderPrompt} ${styles.formSpan}`}>
+                  <span className={styles.helper}>Need help choosing a code?</span>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={() => setRecommendOpen(true)}
+                    data-testid="soc-recommender-toggle"
+                  >
+                    Recommend by duties
+                  </button>
+                </div>
+              )
             ) : null}
 
             {detectedMode === 'address_soc' ? (
