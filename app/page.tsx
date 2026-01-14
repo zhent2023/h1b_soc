@@ -287,7 +287,7 @@ export default function HomePage() {
     code: string;
     title: string | null;
   } | null>(null);
-  const [recommendOpen, setRecommendOpen] = useState(false);
+  const [recommendOpen, setRecommendOpen] = useState(true);
   const [socInputFlash, setSocInputFlash] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const stateListboxId = useId();
@@ -1730,9 +1730,6 @@ export default function HomePage() {
                     </div>
                   ) : null}
                 </div>
-                <span className={styles.helper} data-testid="soc-help">
-                  Wages use SOC-6; tasks use O*NET 8-digit with fallback.
-                </span>
               {socSuffixMatch ? (
                 <span className={styles.hintStrong} data-testid="soc-suffix-note">
                   Using {socSuffixMatch[1]} for wages (O*NET suffix .{socSuffixMatch[2]} ignored).
@@ -1945,7 +1942,7 @@ export default function HomePage() {
                 </div>
               ) : (
                 <div className={`${styles.recommenderPrompt} ${styles.formSpan}`}>
-                  <span className={styles.helper}>Need help choosing a code?</span>
+                  <span className={styles.helper}>Need help choosing an O*NET code?</span>
                   <button
                     type="button"
                     className={styles.ghostButton}
