@@ -23,9 +23,11 @@ model DatasetVersion {
   onetSocMaps       OnetSocMap[]
   onetDuties        OnetDuty[]
   onetOccupations   OnetOccupation[]
+  onetEmbeddingVersions OnetEmbeddingVersion[]
   geoCounties       GeoCounty[]
   geoCountyToCbsas  GeoCountyToCbsa[]
   geoCbsas          GeoCbsa[]
+  geoCityCounties   GeoCityCounty[]
 
   @@index([datasetName])
 }
@@ -185,6 +187,57 @@ model OnetOccupation {
 
   @@unique([datasetVersionId, onetCode])
   @@index([datasetVersionId, title])
+}
+
+model OnetEmbeddingVersion {
+  id                   String   @id @default(uuid()) @db.Uuid
+  provider             String
+  model                String
+  outputDim            Int
+  onetDatasetVersionId String   @db.Uuid
+  isActive             Boolean  @default(false)
+  metaJson             Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  datasetVersion DatasetVersion    @relation(fields: [onetDatasetVersionId], references: [id], onDelete: Cascade)
+  embeddings     OnetDutyEmbedding[]
+
+  @@index([onetDatasetVersionId])
+  @@index([isActive])
+}
+
+model OnetDutyEmbedding {
+  id                 String   @id @default(uuid()) @db.Uuid
+  embeddingVersionId String   @db.Uuid
+  onetCode           String
+  contentText        String
+  /// pgvector column; use raw SQL for vector similarity queries.
+  embedding          Unsupported("vector(3072)")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  embeddingVersion OnetEmbeddingVersion @relation(fields: [embeddingVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([embeddingVersionId, onetCode])
+  @@index([embeddingVersionId])
+}
+
+model GeoCityCounty {
+  id               String  @id @default(uuid()) @db.Uuid
+  datasetVersionId String  @db.Uuid
+  stateAb          String
+  cityName         String
+  cityNameNorm     String
+  countyName       String
+  countyNameNorm   String
+  countyFips       String?
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([datasetVersionId, stateAb, cityNameNorm, countyNameNorm])
+  @@index([datasetVersionId, stateAb, cityNameNorm])
+  @@index([datasetVersionId, stateAb, countyNameNorm])
 }
 
 model GeoCounty {

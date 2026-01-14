@@ -7,6 +7,7 @@ import { downloadToCache } from './lib/download';
 import { resolveOflcWageZipUrl } from './sources/oflc';
 import { resolveOnetDbTextZipUrl } from './sources/onet';
 import { resolveCountyGazetteerZipUrl } from './sources/county_gazetteer';
+import { resolveCityCountyCsvUrl } from './sources/city_county';
 
 const prisma = new PrismaClient();
 const ROOT_DIR = path.resolve(__dirname, '../..');
@@ -95,6 +96,7 @@ async function main() {
   const oflcZipPath = getArgValue('--oflcZipPath');
   const onetZipPath = getArgValue('--onetZipPath');
   const countyZipPath = getArgValue('--countyZipPath');
+  const cityCountyCsvPath = getArgValue('--cityCountyCsvPath');
 
   let resolvedOflcZip = oflcZipPath;
   let oflcSource: 'download' | 'zip' = oflcZipPath ? 'zip' : 'download';
@@ -128,6 +130,19 @@ async function main() {
     countyLabel = countyResolved.label;
   } else {
     countyLabel = parseCountyLabel(path.basename(resolvedCountyZip));
+  }
+
+  let resolvedCityCountyCsv = cityCountyCsvPath;
+  let cityCountyLabel: string | null = null;
+  let cityCountySource: 'download' | 'csv' = cityCountyCsvPath ? 'csv' : 'download';
+  let cityCountyUrl: string | null = null;
+  if (!resolvedCityCountyCsv) {
+    const cityCountyResolved = resolveCityCountyCsvUrl();
+    cityCountyUrl = cityCountyResolved.url;
+    resolvedCityCountyCsv = (await downloadToCache(cityCountyResolved.url, cacheDir)).path;
+    cityCountyLabel = cityCountyResolved.label;
+  } else {
+    cityCountyLabel = path.basename(resolvedCityCountyCsv);
   }
 
   console.log(
@@ -181,10 +196,32 @@ async function main() {
     `INGEST county done versionId=${countyVersion.id} label=${countyVersion.versionLabel}`,
   );
 
+  console.log(
+    `INGEST city_county start source=${cityCountySource} ${
+      cityCountySource === 'download'
+        ? `url=${cityCountyUrl ?? 'unknown'}`
+        : `path=${resolvedCityCountyCsv}`
+    }`,
+  );
+  await runScript([
+    'scripts/ingest/ingest_city_county.ts',
+    '--csvPath',
+    resolvedCityCountyCsv,
+    '--label',
+    cityCountyLabel ?? path.basename(resolvedCityCountyCsv),
+    '--cbsaVersionId',
+    countyVersion.id,
+  ]);
+  const cityCountyVersion = await getLatestVersion('city_county');
+  console.log(
+    `INGEST city_county done versionId=${cityCountyVersion.id} label=${cityCountyVersion.versionLabel}`,
+  );
+
   if (activate) {
     await activateDataset('oflc', oflcVersion.id);
     await activateDataset('onet', onetVersion.id);
     await activateDataset('cbsa', countyVersion.id);
+    await activateDataset('city_county', cityCountyVersion.id);
   }
 
   const summary = async (datasetName: string, labelOverride?: string) => {
@@ -203,6 +240,7 @@ async function main() {
   const oflcSummary = await summary('oflc');
   const onetSummary = await summary('onet');
   const countySummary = await summary('cbsa');
+  const cityCountySummary = await summary('city_county');
 
   console.log(
     `SUMMARY oflc versionId=${oflcSummary.versionId} label=${oflcSummary.label} active=${oflcSummary.active}`,
@@ -212,6 +250,9 @@ async function main() {
   );
   console.log(
     `SUMMARY county versionId=${countySummary.versionId} label=${countySummary.label} active=${countySummary.active}`,
+  );
+  console.log(
+    `SUMMARY city_county versionId=${cityCountySummary.versionId} label=${cityCountySummary.label} active=${cityCountySummary.active}`,
   );
 }
 

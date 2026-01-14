@@ -54,4 +54,39 @@ describe('parseFullAddress', () => {
     expect(parsed.confidence).toBe('low');
     expect(parsed.warnings.join(' ')).toContain('PO Box');
   });
+
+  it('parses city/state inputs with warnings', () => {
+    const cityOnly = parseFullAddress('San Jose, CA');
+    expect(cityOnly.line1).toBe('');
+    expect(cityOnly.city).toBe('San Jose');
+    expect(cityOnly.state).toBe('CA');
+    expect(cityOnly.zip).toBeUndefined();
+    expect(cityOnly.confidence).toBe('low');
+    expect(cityOnly.warnings.join(' ')).toContain('Street address missing');
+    expect(cityOnly.warnings.join(' ')).toContain('ZIP code missing');
+
+    const cityZip = parseFullAddress('San Jose, CA 95112');
+    expect(cityZip.line1).toBe('');
+    expect(cityZip.city).toBe('San Jose');
+    expect(cityZip.state).toBe('CA');
+    expect(cityZip.zip).toBe('95112');
+    expect(cityZip.confidence).toBe('medium');
+    expect(cityZip.warnings.join(' ')).toContain('Street address missing');
+
+    const cityZipComma = parseFullAddress('San Jose, CA, 95112');
+    expect(cityZipComma.line1).toBe('');
+    expect(cityZipComma.city).toBe('San Jose');
+    expect(cityZipComma.state).toBe('CA');
+    expect(cityZipComma.zip).toBe('95112');
+    expect(cityZipComma.confidence).toBe('medium');
+    expect(cityZipComma.warnings.join(' ')).toContain('Street address missing');
+
+    const cityZipNoComma = parseFullAddress('San Jose CA 95112');
+    expect(cityZipNoComma.line1).toBe('');
+    expect(cityZipNoComma.city).toBe('San Jose');
+    expect(cityZipNoComma.state).toBe('CA');
+    expect(cityZipNoComma.zip).toBe('95112');
+    expect(cityZipNoComma.confidence).toBe('medium');
+    expect(cityZipNoComma.warnings.join(' ')).toContain('Street address missing');
+  });
 });

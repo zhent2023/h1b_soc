@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type KeyboardEvent,
+} from 'react';
 import { useRouter } from 'next/navigation';
 
 import { parseFullAddress, type ParsedAddress } from '../src/lib/address';
@@ -8,8 +17,216 @@ import styles from './page.module.css';
 
 type DetectedMode = 'address' | 'address_soc' | 'soc' | 'none';
 type OccupationSuggestion = { onetCode: string; title: string };
+type AddressFields = {
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  zip: string;
+};
+type SocRecommendItem = {
+  matchedOnetCode: string;
+  matchedOnetTitle: string | null;
+  socCode: string;
+  socTitle: string | null;
+  similarity: number;
+  confidence?: number;
+  duties: string[];
+  dutiesCount: number;
+  dutiesAvailable: boolean;
+  wageLevel1Hourly: string | null;
+  wageLevel1Annual: number | null;
+  wageYear: string | null;
+  wageAreaCode: string | null;
+  wageIsAcwia: boolean | null;
+  wageAvailable: boolean;
+  wageHasDataQualityIssue: boolean | null;
+  wageDataQualityNotes: Record<string, unknown> | null;
+  wageSource: 'LOCAL' | 'NATIONAL' | 'NONE';
+};
+type SocRecommendResponse = {
+  items: SocRecommendItem[];
+  warnings: string[];
+  meta?: {
+    inputTruncated?: boolean;
+    enrichment?: {
+      dutiesIncluded: boolean;
+      wageIncluded: boolean;
+      skippedReason?: 'TIMEOUT' | 'MISSING_WAGE_CONTEXT' | 'ERROR';
+    };
+  };
+};
 const confirmationStorageKey = 'lookupConfirmation';
 const onetCodePattern = /^\s*(\d{2}-\d{4}(?:\.\d{2})?)\b/;
+const dutiesPreviewCount = 6;
+const PO_BOX_RE = /\bP\.?\s*O\.?\s*Box\b/i;
+
+const STATE_OPTIONS = [
+  { code: 'AL', name: 'Alabama' },
+  { code: 'AK', name: 'Alaska' },
+  { code: 'AZ', name: 'Arizona' },
+  { code: 'AR', name: 'Arkansas' },
+  { code: 'CA', name: 'California' },
+  { code: 'CO', name: 'Colorado' },
+  { code: 'CT', name: 'Connecticut' },
+  { code: 'DC', name: 'District of Columbia' },
+  { code: 'DE', name: 'Delaware' },
+  { code: 'FL', name: 'Florida' },
+  { code: 'GA', name: 'Georgia' },
+  { code: 'GU', name: 'Guam' },
+  { code: 'HI', name: 'Hawaii' },
+  { code: 'IA', name: 'Iowa' },
+  { code: 'ID', name: 'Idaho' },
+  { code: 'IL', name: 'Illinois' },
+  { code: 'IN', name: 'Indiana' },
+  { code: 'KS', name: 'Kansas' },
+  { code: 'KY', name: 'Kentucky' },
+  { code: 'LA', name: 'Louisiana' },
+  { code: 'MA', name: 'Massachusetts' },
+  { code: 'MD', name: 'Maryland' },
+  { code: 'ME', name: 'Maine' },
+  { code: 'MI', name: 'Michigan' },
+  { code: 'MN', name: 'Minnesota' },
+  { code: 'MO', name: 'Missouri' },
+  { code: 'MS', name: 'Mississippi' },
+  { code: 'MT', name: 'Montana' },
+  { code: 'NC', name: 'North Carolina' },
+  { code: 'ND', name: 'North Dakota' },
+  { code: 'NE', name: 'Nebraska' },
+  { code: 'NH', name: 'New Hampshire' },
+  { code: 'NJ', name: 'New Jersey' },
+  { code: 'NM', name: 'New Mexico' },
+  { code: 'NV', name: 'Nevada' },
+  { code: 'NY', name: 'New York' },
+  { code: 'OH', name: 'Ohio' },
+  { code: 'OK', name: 'Oklahoma' },
+  { code: 'OR', name: 'Oregon' },
+  { code: 'PA', name: 'Pennsylvania' },
+  { code: 'PR', name: 'Puerto Rico' },
+  { code: 'RI', name: 'Rhode Island' },
+  { code: 'SC', name: 'South Carolina' },
+  { code: 'SD', name: 'South Dakota' },
+  { code: 'TN', name: 'Tennessee' },
+  { code: 'TX', name: 'Texas' },
+  { code: 'UT', name: 'Utah' },
+  { code: 'VA', name: 'Virginia' },
+  { code: 'VI', name: 'U.S. Virgin Islands' },
+  { code: 'VT', name: 'Vermont' },
+  { code: 'WA', name: 'Washington' },
+  { code: 'WI', name: 'Wisconsin' },
+  { code: 'WV', name: 'West Virginia' },
+  { code: 'WY', name: 'Wyoming' },
+];
+
+const STATE_CODES = new Set(STATE_OPTIONS.map((entry) => entry.code));
+
+function normalizeStateName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z]/g, '');
+}
+
+function normalizeStateInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const upper = trimmed.toUpperCase();
+  if (STATE_CODES.has(upper)) return upper;
+  const normalizedName = normalizeStateName(trimmed);
+  const match = STATE_OPTIONS.find(
+    (entry) => normalizeStateName(entry.name) === normalizedName,
+  );
+  return match ? match.code : null;
+}
+
+function composeAddressText(fields: AddressFields, normalizedState?: string | null): string {
+  const line1 = fields.line1.trim();
+  const line2 = fields.line2.trim();
+  const city = fields.city.trim();
+  const state = normalizedState ?? '';
+  const zip = fields.zip.trim();
+  const stateZip = [state, zip].filter(Boolean).join(' ');
+  return [line1, line2, city, stateZip].filter(Boolean).join(', ');
+}
+
+function computeAddressMeta(fields: AddressFields) {
+  const line1 = fields.line1.trim();
+  const line2 = fields.line2.trim();
+  const city = fields.city.trim();
+  const stateRaw = fields.state.trim();
+  const zip = fields.zip.trim();
+  const hasAny = Boolean(line1 || line2 || city || stateRaw || zip);
+  const normalizedState = normalizeStateInput(stateRaw);
+  const warnings: string[] = [];
+
+  if (!hasAny) {
+    return { warnings, confidence: 'low' as const, normalizedState, hasAny };
+  }
+
+  if (!city) {
+    warnings.push('City is required.');
+  }
+  if (!normalizedState) {
+    warnings.push(
+      stateRaw
+        ? 'State must be a valid US state or territory.'
+        : 'State is required.',
+    );
+  }
+  if (!zip) {
+    warnings.push('ZIP code missing.');
+  }
+  if (!line1 && city && normalizedState) {
+    warnings.push('Street address missing; results may be approximate.');
+  }
+  if (PO_BOX_RE.test(`${line1} ${line2}`)) {
+    warnings.push('PO Box detected; results may be inaccurate.');
+  }
+
+  let confidence: 'high' | 'medium' | 'low' = 'high';
+  if (!city || !normalizedState) {
+    confidence = 'low';
+  } else if (!zip || !line1) {
+    confidence = 'medium';
+  }
+
+  return { warnings, confidence, normalizedState, hasAny };
+}
+
+function buildAddressFieldsFromParsed(parsed: ParsedAddress): AddressFields {
+  return {
+    line1: parsed.line1,
+    line2: parsed.line2 ?? '',
+    city: parsed.city,
+    state: parsed.state,
+    zip: parsed.zip ?? '',
+  };
+}
+
+function normalizeAddressInput(value: string): string {
+  return value.replace(/\s*\n+\s*/g, ', ').replace(/\s+/g, ' ').trim();
+}
+
+function hydrateAddressFields(payload?: {
+  fullText?: string;
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+}): AddressFields {
+  if (!payload) {
+    return { line1: '', line2: '', city: '', state: '', zip: '' };
+  }
+  const line1 = payload.line1 ?? '';
+  const line2 = payload.line2 ?? '';
+  const city = payload.city ?? '';
+  const state = payload.state ?? '';
+  const zip = payload.zip ?? '';
+  const hasAny = Boolean(line1 || line2 || city || state || zip);
+  if (!hasAny && payload.fullText) {
+    const parsed = parseFullAddress(payload.fullText);
+    return buildAddressFieldsFromParsed(parsed);
+  }
+  return { line1, line2, city, state, zip };
+}
 
 function extractOnetCode(value: string): string {
   const match = value.match(onetCodePattern);
@@ -22,9 +239,13 @@ function formatOccupationLabel(entry: OccupationSuggestion): string {
 
 export default function HomePage() {
   const router = useRouter();
-  const [addressText, setAddressText] = useState('');
-  const [addressDetails, setAddressDetails] = useState<ParsedAddress | null>(null);
-  const [showAddressDetails, setShowAddressDetails] = useState(false);
+  const [addressDetails, setAddressDetails] = useState<AddressFields>({
+    line1: '',
+    line2: '',
+    city: '',
+    state: '',
+    zip: '',
+  });
   const [socInput, setSocInput] = useState('');
   const [socCode, setSocCode] = useState('');
   const [socSelectedTitle, setSocSelectedTitle] = useState<string | null>(null);
@@ -43,16 +264,37 @@ export default function HomePage() {
   const [candidateResults, setCandidateResults] = useState<any[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [candidateError, setCandidateError] = useState('');
+  const [showCandidateSearch, setShowCandidateSearch] = useState(false);
   const [authMode, setAuthMode] = useState<'public' | 'invite' | null>(null);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [dutiesCopied, setDutiesCopied] = useState(false);
   const [welcomeName, setWelcomeName] = useState<string | null>(null);
   const socFetchId = useRef(0);
   const socBlurTimer = useRef<number | null>(null);
+  const stateBlurTimer = useRef<number | null>(null);
+  const confirmationCardRef = useRef<HTMLDivElement | null>(null);
+  const [stateSuggestionsOpen, setStateSuggestionsOpen] = useState(false);
+  const [stateHighlightIndex, setStateHighlightIndex] = useState(-1);
+  const recommenderEnabled = process.env.NEXT_PUBLIC_FEATURE_SOC_RECOMMENDER === 'true';
+  const [dutiesInput, setDutiesInput] = useState('');
+  const [recommendations, setRecommendations] = useState<SocRecommendItem[]>([]);
+  const [recommendLoading, setRecommendLoading] = useState(false);
+  const [recommendError, setRecommendError] = useState('');
+  const [recommendWarnings, setRecommendWarnings] = useState<string[]>([]);
+  const [recommendMeta, setRecommendMeta] = useState<SocRecommendResponse['meta'] | null>(null);
+  const [recommendExpanded, setRecommendExpanded] = useState<string | null>(null);
+  const [recommendSelected, setRecommendSelected] = useState<{
+    code: string;
+    title: string | null;
+  } | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const stateListboxId = useId();
+  const socListboxId = useId();
 
-  const trimmedAddress = addressText.trim();
+  const addressMeta = useMemo(() => computeAddressMeta(addressDetails), [addressDetails]);
   const trimmedSoc = socCode.trim();
-  const hasAddress = trimmedAddress.length > 0;
+  const hasAddressInput = addressMeta.hasAny;
+  const hasAddress = Boolean(addressDetails.city.trim() && addressMeta.normalizedState);
   const hasSoc = trimmedSoc.length > 0;
   const detectedMode: DetectedMode = hasAddress && hasSoc ? 'address_soc' : hasAddress ? 'address' : hasSoc ? 'soc' : 'none';
   const modeLabel =
@@ -89,10 +331,6 @@ export default function HomePage() {
     salaryNumber > 0 &&
     salaryNumber < 1000;
 
-  const parsedAddress = useMemo(
-    () => (addressText.trim() ? parseFullAddress(addressText) : null),
-    [addressText],
-  );
   const annualFormatter = useMemo(
     () => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     [],
@@ -101,6 +339,25 @@ export default function HomePage() {
     () => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     [],
   );
+  const stateSuggestions = useMemo(() => {
+    const query = addressDetails.state.trim().toLowerCase();
+    if (!query) return [];
+    return STATE_OPTIONS.filter(
+      (entry) =>
+        entry.code.toLowerCase().startsWith(query) ||
+        entry.name.toLowerCase().startsWith(query),
+    );
+  }, [addressDetails.state]);
+  const stateActiveId =
+    stateSuggestionsOpen &&
+    stateHighlightIndex >= 0 &&
+    stateHighlightIndex < stateSuggestions.length
+      ? `${stateListboxId}-option-${stateSuggestions[stateHighlightIndex].code}`
+      : undefined;
+  const socActiveId =
+    socSuggestionsOpen && socHighlightIndex >= 0 && socHighlightIndex < socSuggestions.length
+      ? `${socListboxId}-option-${socSuggestions[socHighlightIndex].onetCode}`
+      : undefined;
 
   useEffect(() => {
     let active = true;
@@ -130,17 +387,6 @@ export default function HomePage() {
       active = false;
     };
   }, [router]);
-
-  useEffect(() => {
-    if (!parsedAddress) {
-      setAddressDetails(null);
-      return;
-    }
-    setAddressDetails(parsedAddress);
-    if (parsedAddress.confidence !== 'high') {
-      setShowAddressDetails(true);
-    }
-  }, [parsedAddress]);
 
   useEffect(() => {
     const query = socInput.trim();
@@ -214,8 +460,18 @@ export default function HomePage() {
       setCandidateResults([]);
       setCandidateQuery('');
       setCandidateError('');
+      setShowCandidateSearch(false);
+      return;
     }
+    setShowCandidateSearch(false);
   }, [response]);
+
+  useEffect(() => {
+    if (response?.kind !== 'geo_needs_confirmation') return;
+    const node = confirmationCardRef.current;
+    if (!node) return;
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [response?.kind]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(confirmationStorageKey);
@@ -230,7 +486,7 @@ export default function HomePage() {
       if (saved.lastRequest) {
         setLastRequest(saved.lastRequest);
         setResponse(saved.response ?? null);
-        setAddressText(saved.lastRequest.address?.fullText ?? '');
+        setAddressDetails(hydrateAddressFields(saved.lastRequest.address));
         const restoredSoc = saved.lastRequest.socCode ?? '';
         setSocCode(restoredSoc);
         setSocInput(restoredSoc);
@@ -271,6 +527,45 @@ export default function HomePage() {
     setDutiesCopied(false);
   }, [response?.duties]);
 
+  useEffect(() => {
+    if (!recommenderEnabled || typeof window === 'undefined') {
+      return;
+    }
+    const media = window.matchMedia('(max-width: 720px)');
+    const update = () => setIsMobile(media.matches);
+    update();
+    if (media.addEventListener) {
+      media.addEventListener('change', update);
+    } else {
+      media.addListener(update);
+    }
+    return () => {
+      if (media.removeEventListener) {
+        media.removeEventListener('change', update);
+      } else {
+        media.removeListener(update);
+      }
+    };
+  }, [recommenderEnabled]);
+
+  useEffect(() => {
+    if (!recommenderEnabled || typeof window === 'undefined') {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const focus = params.get('focusOnet');
+    if (focus) {
+      setRecommendSelected({ code: focus, title: null });
+    }
+  }, [recommenderEnabled]);
+
+  useEffect(() => {
+    if (!recommendSelected) return;
+    if (socCode === recommendSelected.code && socSelectedTitle && !recommendSelected.title) {
+      setRecommendSelected({ code: recommendSelected.code, title: socSelectedTitle });
+    }
+  }, [recommendSelected, socCode, socSelectedTitle]);
+
   const handleLogout = async () => {
     try {
       await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
@@ -279,7 +574,137 @@ export default function HomePage() {
     }
   };
 
+  const updateFocusOnetParam = (code: string | null) => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (code) {
+      url.searchParams.set('focusOnet', code);
+    } else {
+      url.searchParams.delete('focusOnet');
+    }
+    window.history.replaceState({}, '', url.toString());
+  };
+
+  const clearRecommendSelection = () => {
+    if (!recommendSelected) return;
+    setRecommendSelected(null);
+    updateFocusOnetParam(null);
+  };
+
+  const formatMatchPercent = (value: number) => {
+    const bounded = Math.min(Math.max(value, 0), 1);
+    return `${(bounded * 100).toFixed(2)}%`;
+  };
+
+  const formatHourlyPreview = (value: string | null) => {
+    if (!value) return '—';
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return value;
+    return `$${hourlyFormatter.format(parsed)}`;
+  };
+
+  const formatAnnualPreview = (value: number | null) => {
+    if (value === null || value === undefined) return '—';
+    return `$${annualFormatter.format(value)}`;
+  };
+
+  const applyParsedAddress = (parsed: ParsedAddress) => {
+    setAddressDetails(buildAddressFieldsFromParsed(parsed));
+  };
+
+  const handleLine1Paste = (event: ClipboardEvent<HTMLInputElement>) => {
+    const raw = event.clipboardData.getData('text');
+    const text = normalizeAddressInput(raw);
+    if (!text) return;
+    const parsed = parseFullAddress(text);
+    if (parsed.city && parsed.state) {
+      event.preventDefault();
+      applyParsedAddress(parsed);
+    }
+  };
+
+  const handleLine1Blur = () => {
+    const candidate = normalizeAddressInput(addressDetails.line1);
+    if (!candidate) return;
+    const looksLikeFull =
+      candidate.includes(',') || /\b[A-Za-z]{2}\s*\d{5}\b/.test(candidate);
+    if (!looksLikeFull) return;
+    const parsed = parseFullAddress(candidate);
+    if (parsed.city && parsed.state) {
+      applyParsedAddress(parsed);
+    }
+  };
+
+  const handleStateBlur = () => {
+    const normalized = normalizeStateInput(addressDetails.state);
+    if (normalized && normalized !== addressDetails.state) {
+      updateAddressDetail('state', normalized);
+    }
+  };
+
+  const handleStateInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    const trimmed = value.trim();
+    if (!trimmed) {
+      updateAddressDetail('state', value);
+      setStateSuggestionsOpen(false);
+      setStateHighlightIndex(-1);
+      return;
+    }
+    const normalized = normalizeStateInput(trimmed);
+    if (normalized && trimmed.length > 2) {
+      updateAddressDetail('state', normalized);
+      setStateSuggestionsOpen(false);
+      setStateHighlightIndex(-1);
+      return;
+    }
+    updateAddressDetail('state', value);
+    setStateSuggestionsOpen(true);
+    setStateHighlightIndex(-1);
+  };
+
+  const handleStateSelect = (code: string) => {
+    updateAddressDetail('state', code);
+    setStateSuggestionsOpen(false);
+    setStateHighlightIndex(-1);
+  };
+
+  const handleStateKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!stateSuggestionsOpen || stateSuggestions.length === 0) {
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setStateHighlightIndex((prev) => {
+        const next = prev + 1;
+        return next >= stateSuggestions.length ? 0 : next;
+      });
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setStateHighlightIndex((prev) => {
+        const next = prev - 1;
+        return next < 0 ? stateSuggestions.length - 1 : next;
+      });
+      return;
+    }
+    if (event.key === 'Enter' && stateHighlightIndex >= 0) {
+      event.preventDefault();
+      const entry = stateSuggestions[stateHighlightIndex];
+      if (entry) {
+        handleStateSelect(entry.code);
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      setStateSuggestionsOpen(false);
+      setStateHighlightIndex(-1);
+    }
+  };
+
   const handleSocInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    clearRecommendSelection();
     const value = event.target.value;
     if (socSelectedTitle) {
       const selectedLabel = formatOccupationLabel({ onetCode: socCode, title: socSelectedTitle });
@@ -293,6 +718,7 @@ export default function HomePage() {
   };
 
   const handleSocSelect = (entry: OccupationSuggestion) => {
+    clearRecommendSelection();
     const label = formatOccupationLabel(entry);
     setSocInput(label);
     setSocCode(entry.onetCode);
@@ -337,20 +763,105 @@ export default function HomePage() {
     }
   };
 
+  const handleRecommendSelect = (item: SocRecommendItem) => {
+    const title = item.matchedOnetTitle ?? item.socTitle ?? null;
+    if (title) {
+      setSocInput(formatOccupationLabel({ onetCode: item.matchedOnetCode, title }));
+    } else {
+      setSocInput(item.matchedOnetCode);
+    }
+    setSocCode(item.matchedOnetCode);
+    setSocSelectedTitle(title);
+    setSocSuggestions([]);
+    setSocSuggestionsOpen(false);
+    setSocSuggestionsError('');
+    setSocHighlightIndex(-1);
+    setRecommendSelected({ code: item.matchedOnetCode, title });
+    updateFocusOnetParam(item.matchedOnetCode);
+  };
+
+  const handleRecommendSubmit = async () => {
+    if (!recommenderEnabled) return;
+    const trimmed = dutiesInput.trim();
+    if (!trimmed) {
+      setRecommendError('Paste job duties to get recommendations.');
+      setRecommendations([]);
+      return;
+    }
+    setRecommendLoading(true);
+    setRecommendError('');
+    setRecommendWarnings([]);
+    setRecommendMeta(null);
+    const localWarnings: string[] = [];
+    try {
+      const payload: Record<string, unknown> = { dutiesText: trimmed };
+      const { areaCode, warning } = await resolveRecommendAreaCode();
+      if (areaCode) {
+        payload.areaCode = areaCode;
+      }
+      if (warning) {
+        localWarnings.push(warning);
+      }
+      if (response?.wages?.wageYear) {
+        payload.wageYear = response.wages.wageYear;
+      }
+      if (typeof response?.wages?.isAcwia === 'boolean') {
+        payload.isAcwia = response.wages.isAcwia;
+      }
+
+      const res = await fetch('/api/v1/soc/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json()) as SocRecommendResponse;
+      if (!res.ok) {
+        throw new Error((data as any)?.error ?? 'Recommendation failed.');
+      }
+      setRecommendations(Array.isArray(data.items) ? data.items : []);
+      const apiWarnings = Array.isArray(data.warnings) ? data.warnings : [];
+      setRecommendWarnings([...localWarnings, ...apiWarnings]);
+      setRecommendMeta(data.meta ?? null);
+      setRecommendExpanded(null);
+    } catch (err) {
+      setRecommendError(err instanceof Error ? err.message : 'Recommendation failed.');
+      setRecommendations([]);
+      if (localWarnings.length) {
+        setRecommendWarnings(localWarnings);
+      }
+    } finally {
+      setRecommendLoading(false);
+    }
+  };
+
+  const buildAddressPayload = () => {
+    if (!hasAddress) {
+      return null;
+    }
+    const normalizedState = addressMeta.normalizedState;
+    const line1 = addressDetails.line1.trim();
+    const line2 = addressDetails.line2.trim();
+    const city = addressDetails.city.trim();
+    const zip = addressDetails.zip.trim();
+    const fullText = composeAddressText(addressDetails, normalizedState);
+    return {
+      address: {
+        fullText: fullText || undefined,
+        line1: line1 || undefined,
+        line2: line2 || undefined,
+        city: city || undefined,
+        state: normalizedState || undefined,
+        zip: zip || undefined,
+      },
+    };
+  };
+
   const buildRequestBody = (override?: { areaCode?: string }) => {
     const body: any = {};
-    if (hasAddress) {
-      if (trimmedAddress) {
-        const parsed = addressDetails ?? parseFullAddress(trimmedAddress);
-        const line1 = parsed.line2 ? `${parsed.line1} ${parsed.line2}`.trim() : parsed.line1;
-        body.address = {
-          fullText: trimmedAddress,
-          line1: line1 || undefined,
-          city: parsed.city || undefined,
-          state: parsed.state || undefined,
-          zip: parsed.zip || undefined,
-        };
-      }
+    const addressPayload = buildAddressPayload();
+    if (addressPayload) {
+      Object.assign(body, addressPayload);
     }
     if (hasSoc) {
       body.socCode = trimmedSoc;
@@ -365,6 +876,40 @@ export default function HomePage() {
       body.override = { areaCode: override.areaCode };
     }
     return body;
+  };
+
+  const resolveRecommendAreaCode = async (): Promise<{ areaCode: string | null; warning?: string }> => {
+    const areaFromResponse = response?.geo?.area?.areaCode ?? null;
+    if (areaFromResponse) {
+      return { areaCode: areaFromResponse };
+    }
+
+    const addressPayload = buildAddressPayload();
+    if (!addressPayload) {
+      return { areaCode: null };
+    }
+
+    try {
+      const res = await fetch('/api/v1/lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(addressPayload),
+      });
+      const data = await res.json();
+      if (res.ok && data?.geo?.area?.areaCode) {
+        return { areaCode: data.geo.area.areaCode };
+      }
+      if (data?.kind === 'geo_needs_confirmation') {
+        return {
+          areaCode: null,
+          warning: 'Address needs confirmation; wage preview is unavailable.',
+        };
+      }
+      return { areaCode: null, warning: 'Wage area could not be resolved from the address.' };
+    } catch {
+      return { areaCode: null, warning: 'Wage area lookup failed; wage preview is unavailable.' };
+    }
   };
 
   const runLookup = async (override?: { areaCode?: string }) => {
@@ -406,27 +951,18 @@ export default function HomePage() {
     setLastRequest({ ...base, override: { areaCode } });
   };
 
-  const updateAddressDetail = (field: keyof ParsedAddress, value: string) => {
-    setAddressDetails((prev) =>
-      prev
-        ? {
-          ...prev,
-          [field]: value,
-        }
-        : prev,
-    );
-    setShowAddressDetails(true);
+  const updateAddressDetail = (field: keyof AddressFields, value: string) => {
+    setAddressDetails((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
   const runCandidateSearch = async () => {
     const geoState = response?.geo?.geocode?.stateAb;
-    const fallbackStateMatch = addressText.match(/\b([A-Za-z]{2})\s*\d{5}\b/);
-    const fallbackState = fallbackStateMatch ? fallbackStateMatch[1].toUpperCase() : null;
     const stateAb =
       (geoState && geoState !== 'NA' ? geoState : null) ||
-      addressDetails?.state ||
-      parsedAddress?.state ||
-      fallbackState;
+      normalizeStateInput(addressDetails.state);
     if (!stateAb) {
       setCandidateError('State is required to search candidates.');
       return;
@@ -452,6 +988,17 @@ export default function HomePage() {
     } finally {
       setCandidateLoading(false);
     }
+  };
+
+  const openCandidateSearch = () => {
+    setShowCandidateSearch(true);
+  };
+
+  const closeCandidateSearch = () => {
+    setShowCandidateSearch(false);
+    setCandidateQuery('');
+    setCandidateResults([]);
+    setCandidateError('');
   };
 
   const formatMoney = (value: number | null | undefined, unit: 'year' | 'hour') => {
@@ -501,6 +1048,9 @@ export default function HomePage() {
       if (!area) return 'Unknown area';
       return area.displayName || area.areaName || 'Unknown area';
     };
+    const combinedWarnings = Array.from(
+      new Set([...(response.warnings ?? []), ...(addressMeta.warnings ?? [])]),
+    );
 
     return (
       <div className={styles.results} data-testid="results">
@@ -511,13 +1061,98 @@ export default function HomePage() {
           </span>
         </div>
 
-        {response.warnings?.length ? (
+        {combinedWarnings.length ? (
           <div className={styles.warning} data-testid="warnings">
-            Warnings: {response.warnings.join('; ')}
+            Warnings: {combinedWarnings.join('; ')}
           </div>
         ) : null}
 
         <div className={styles.resultsGrid}>
+          {response.kind === 'geo_needs_confirmation' && response.confirmation?.suggestions ? (
+            <div
+              ref={confirmationCardRef}
+              className={`${styles.card} ${styles.spanTwo} ${styles.confirmationCard}`}
+              data-testid="confirmation-card"
+            >
+              <h3 className={styles.cardTitle}>Confirmation Needed</h3>
+              <ul className={styles.list} data-testid="confirmation-list">
+                {response.confirmation.suggestions.map((entry: any) => (
+                  <li key={`${entry.areaCode}-${entry.countyFips}`}>
+                    {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
+                    <button
+                      className={styles.chipButton}
+                      type="button"
+                      onClick={() => resendWithOverride(entry.areaCode)}
+                    >
+                      Use
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {showCandidateSearch ? (
+                <div className={styles.confirmationSearch}>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={closeCandidateSearch}
+                  >
+                    Hide search
+                  </button>
+                  <div className={styles.formGrid}>
+                    <label className={styles.field}>
+                      <span className={styles.label}>Search by county/town name</span>
+                      <input
+                        className={styles.input}
+                        value={candidateQuery}
+                        onChange={(event) => setCandidateQuery(event.target.value)}
+                        data-testid="candidate-search-input"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => runCandidateSearch()}
+                      disabled={candidateLoading}
+                      data-testid="candidate-search-button"
+                    >
+                      {candidateLoading ? 'Searching...' : 'Search'}
+                    </button>
+                    {candidateError ? (
+                      <div className={styles.error} data-testid="candidate-error">
+                        {candidateError}
+                      </div>
+                    ) : null}
+                    {candidateResults.length ? (
+                      <ul className={styles.list} data-testid="candidate-results">
+                        {candidateResults.map((entry) => (
+                          <li key={`${entry.areaCode}-${entry.countyFips}`}>
+                            {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
+                            <button
+                              className={styles.chipButton}
+                              type="button"
+                              onClick={() => resendWithOverride(entry.areaCode)}
+                            >
+                              Use
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.confirmationToggle}>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={openCandidateSearch}
+                  >
+                    Cannot find your county? Search manually
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
           <div className={`${styles.card} ${styles.primaryCard}`}>
             <h3 className={styles.cardTitle}>County / Township</h3>
             {hasGeo ? (
@@ -759,68 +1394,6 @@ export default function HomePage() {
             </ul>
           </div>
         ) : null}
-
-        {response.kind === 'geo_needs_confirmation' && response.confirmation?.suggestions ? (
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Confirmation Needed</h3>
-            <ul className={styles.list} data-testid="confirmation-list">
-              {response.confirmation.suggestions.map((entry: any) => (
-                <li key={`${entry.areaCode}-${entry.countyFips}`}>
-                  {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
-                  <button
-                    className={styles.chipButton}
-                    type="button"
-                    onClick={() => resendWithOverride(entry.areaCode)}
-                  >
-                    Use
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div className={styles.formGrid}>
-              <label className={styles.field}>
-                <span className={styles.label}>Search candidates</span>
-                <input
-                  className={styles.input}
-                  value={candidateQuery}
-                  onChange={(event) => setCandidateQuery(event.target.value)}
-                  placeholder="Middlesex"
-                  data-testid="candidate-search-input"
-                />
-              </label>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => runCandidateSearch()}
-                disabled={candidateLoading}
-                data-testid="candidate-search-button"
-              >
-                {candidateLoading ? 'Searching...' : 'Search'}
-              </button>
-              {candidateError ? (
-                <div className={styles.error} data-testid="candidate-error">
-                  {candidateError}
-                </div>
-              ) : null}
-              {candidateResults.length ? (
-                <ul className={styles.list} data-testid="candidate-results">
-                  {candidateResults.map((entry) => (
-                    <li key={`${entry.areaCode}-${entry.countyFips}`}>
-                      {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
-                      <button
-                        className={styles.chipButton}
-                        type="button"
-                        onClick={() => resendWithOverride(entry.areaCode)}
-                      >
-                        Use
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
       </div>
     );
   };
@@ -900,38 +1473,12 @@ export default function HomePage() {
             )}
 
             <div className={styles.formGrid}>
-              <label className={styles.field}>
-                <div className={styles.fieldHeader}>
-                  <span className={styles.label}>Address</span>
-                  <button
-                    type="button"
-                    className={`${styles.secondaryButton} ${styles.inlineButton}`}
-                    onClick={() => setShowAddressDetails((prev) => !prev)}
-                    data-testid="address-details-toggle"
-                  >
-                    {showAddressDetails ? 'Hide address details' : 'Edit address details'}
-                  </button>
+              <div className={styles.field}>
+                <span className={styles.label}>Address</span>
+                <div className={styles.helper}>
+                  Paste a full address into Line 1 to auto-fill City, State, and ZIP.
                 </div>
-                <textarea
-                  className={`${styles.textarea} ${styles.addressTextarea}`}
-                  rows={2}
-                  value={addressText}
-                  onChange={(event) => setAddressText(event.target.value)}
-                  placeholder="123 Main St, City, ST 12345"
-                  data-testid="address-input"
-                />
-              </label>
-
-              {showAddressDetails && addressDetails ? (
                 <div className={styles.detailCard} data-testid="address-details">
-                  <div className={styles.helper} data-testid="address-confidence">
-                    Parsed confidence: {addressDetails.confidence}
-                  </div>
-                  {addressDetails.warnings.length ? (
-                    <div className={styles.warning} data-testid="address-warnings">
-                      {addressDetails.warnings.join('; ')}
-                    </div>
-                  ) : null}
                   <div className={styles.formGrid}>
                     <label className={styles.field}>
                       <span className={styles.label}>Line 1</span>
@@ -939,6 +1486,9 @@ export default function HomePage() {
                         className={styles.input}
                         value={addressDetails.line1}
                         onChange={(event) => updateAddressDetail('line1', event.target.value)}
+                        onPaste={handleLine1Paste}
+                        onBlur={handleLine1Blur}
+                        placeholder="Street address or paste full address"
                         data-testid="address-line1"
                       />
                     </label>
@@ -946,14 +1496,16 @@ export default function HomePage() {
                       <span className={styles.label}>Line 2</span>
                       <input
                         className={styles.input}
-                        value={addressDetails.line2 ?? ''}
+                        value={addressDetails.line2}
                         onChange={(event) => updateAddressDetail('line2', event.target.value)}
                         data-testid="address-line2"
                       />
                     </label>
                     <div className={styles.inlineRow}>
                       <label className={styles.field}>
-                        <span className={styles.label}>City</span>
+                        <span className={styles.label}>
+                          City <span className={styles.required}>*</span>
+                        </span>
                         <input
                           className={styles.input}
                           value={addressDetails.city}
@@ -962,19 +1514,87 @@ export default function HomePage() {
                         />
                       </label>
                       <label className={styles.field}>
-                        <span className={styles.label}>State</span>
-                        <input
-                          className={styles.input}
-                          value={addressDetails.state}
-                          onChange={(event) => updateAddressDetail('state', event.target.value)}
-                          data-testid="address-state"
-                        />
+                        <span className={styles.label}>
+                          State <span className={styles.required}>*</span>
+                        </span>
+                        <div className={styles.autocomplete}>
+                          <input
+                            className={styles.input}
+                            value={addressDetails.state}
+                            onChange={handleStateInputChange}
+                            onFocus={() => {
+                              if (stateBlurTimer.current) {
+                                window.clearTimeout(stateBlurTimer.current);
+                                stateBlurTimer.current = null;
+                              }
+                              if (stateSuggestions.length) {
+                                setStateSuggestionsOpen(true);
+                              }
+                            }}
+                            onBlur={() => {
+                              handleStateBlur();
+                              if (stateBlurTimer.current) {
+                                window.clearTimeout(stateBlurTimer.current);
+                              }
+                              stateBlurTimer.current = window.setTimeout(() => {
+                                setStateSuggestionsOpen(false);
+                              }, 150);
+                            }}
+                            onKeyDown={handleStateKeyDown}
+                            data-testid="address-state"
+                            role="combobox"
+                            aria-autocomplete="list"
+                            aria-expanded={stateSuggestionsOpen}
+                            aria-haspopup="listbox"
+                            aria-controls={stateSuggestionsOpen ? stateListboxId : undefined}
+                            aria-activedescendant={
+                              stateSuggestionsOpen ? stateActiveId : undefined
+                            }
+                          />
+                          {stateSuggestionsOpen ? (
+                            <div
+                              className={styles.suggestionsPanel}
+                              role="listbox"
+                              id={stateListboxId}
+                              data-testid="state-suggestions"
+                            >
+                              {stateSuggestions.length ? (
+                                <ul className={styles.suggestionsList}>
+                                  {stateSuggestions.map((entry, index) => {
+                                    const isActive = index === stateHighlightIndex;
+                                    return (
+                                      <li key={entry.code}>
+                                    <button
+                                      type="button"
+                                      className={`${styles.suggestionItem} ${isActive ? styles.suggestionItemActive : ''}`}
+                                      id={`${stateListboxId}-option-${entry.code}`}
+                                      onMouseDown={(event) => {
+                                        event.preventDefault();
+                                        handleStateSelect(entry.code);
+                                          }}
+                                          onMouseEnter={() => setStateHighlightIndex(index)}
+                                          role="option"
+                                          aria-selected={isActive}
+                                        >
+                                          <span className={styles.suggestionCode}>{entry.code}</span>
+                                          <span className={styles.suggestionTitle}>{entry.name}</span>
+                                        </button>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              ) : (
+                                <div className={styles.suggestionsEmpty}>No matches found.</div>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
                       </label>
                       <label className={styles.field}>
                         <span className={styles.label}>ZIP</span>
                         <input
                           className={styles.input}
-                          value={addressDetails.zip ?? ''}
+                          value={addressDetails.zip}
                           onChange={(event) => updateAddressDetail('zip', event.target.value)}
                           data-testid="address-zip"
                         />
@@ -982,7 +1602,7 @@ export default function HomePage() {
                     </div>
                   </div>
                 </div>
-              ) : null}
+              </div>
 
               <label className={styles.field}>
                 <span className={styles.label}>Occupation (O*NET) Code and Title</span>
@@ -1011,12 +1631,20 @@ export default function HomePage() {
                     onKeyDown={handleSocKeyDown}
                     placeholder="15-1211.00 or software"
                     data-testid="soc-input"
+                    role="combobox"
                     aria-autocomplete="list"
                     aria-expanded={socSuggestionsOpen}
                     aria-haspopup="listbox"
+                    aria-controls={socSuggestionsOpen ? socListboxId : undefined}
+                    aria-activedescendant={socSuggestionsOpen ? socActiveId : undefined}
                   />
                   {socSuggestionsOpen ? (
-                    <div className={styles.suggestionsPanel} role="listbox" data-testid="soc-suggestions">
+                    <div
+                      className={styles.suggestionsPanel}
+                      role="listbox"
+                      id={socListboxId}
+                      data-testid="soc-suggestions"
+                    >
                       {socSuggestionsLoading ? (
                         <div className={styles.suggestionsStatus}>Searching occupations...</div>
                       ) : null}
@@ -1033,6 +1661,7 @@ export default function HomePage() {
                                   <button
                                     type="button"
                                     className={`${styles.suggestionItem} ${isActive ? styles.suggestionItemActive : ''}`}
+                                    id={`${socListboxId}-option-${entry.onetCode}`}
                                     onMouseDown={(event) => {
                                       event.preventDefault();
                                       handleSocSelect(entry);
@@ -1058,16 +1687,209 @@ export default function HomePage() {
                 <span className={styles.helper} data-testid="soc-help">
                   Wages use SOC-6; tasks use O*NET 8-digit with fallback.
                 </span>
-                {socSuffixMatch ? (
-                  <span className={styles.hintStrong} data-testid="soc-suffix-note">
-                    Using {socSuffixMatch[1]} for wages (O*NET suffix .{socSuffixMatch[2]} ignored).
-                    {' '}
-                    Tasks keep the O*NET {socSuffixMatch[1]}.{socSuffixMatch[2]} suffix.
-                  </span>
-                ) : null}
-              </label>
+              {socSuffixMatch ? (
+                <span className={styles.hintStrong} data-testid="soc-suffix-note">
+                  Using {socSuffixMatch[1]} for wages (O*NET suffix .{socSuffixMatch[2]} ignored).
+                  {' '}
+                  Tasks keep the O*NET {socSuffixMatch[1]}.{socSuffixMatch[2]} suffix.
+                </span>
+              ) : null}
+            </label>
 
-              {detectedMode === 'address_soc' ? (
+            {recommenderEnabled ? (
+              <div className={`${styles.recommenderPanel} ${styles.formSpan}`} data-testid="soc-recommender">
+                <div className={styles.recommenderHeader}>
+                  <div>
+                    <div className={styles.recommenderHeading}>
+                      <span className={styles.recommenderHeadingTitle}>Recommend O*NET codes</span>
+                      <span className={styles.recommenderTag}>Top 6</span>
+                    </div>
+                    <div className={styles.helper}>
+                      Paste job duties and click Recommend to get Top 6 O*NET codes.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`${styles.primaryButton} ${styles.recommenderAction}`}
+                    onClick={handleRecommendSubmit}
+                    disabled={recommendLoading}
+                    data-testid="soc-recommender-submit"
+                  >
+                    {recommendLoading ? 'Matching...' : 'Recommend Top 6 O*NET Codes'}
+                  </button>
+                </div>
+                <textarea
+                  id="soc-recommender-input"
+                  className={`${styles.textarea} ${styles.recommenderTextarea}`}
+                  rows={4}
+                  value={dutiesInput}
+                  onChange={(event) => setDutiesInput(event.target.value)}
+                  placeholder="Paste job duties here"
+                  data-testid="soc-recommender-input"
+                />
+                {recommendError ? (
+                  <div className={styles.error} data-testid="soc-recommender-error">
+                    {recommendError}
+                  </div>
+                ) : null}
+                {recommendWarnings.length ? (
+                  <div className={styles.warning} data-testid="soc-recommender-warnings">
+                    {recommendWarnings.join(' ')}
+                  </div>
+                ) : null}
+                {recommendMeta?.inputTruncated ? (
+                  <div className={styles.warning} data-testid="soc-recommender-truncated">
+                    Duties were truncated for matching.
+                  </div>
+                ) : null}
+                {recommendSelected ? (
+                  <div className={styles.recommenderBanner} data-testid="soc-recommend-banner">
+                    <span>
+                      Selected O*NET:{' '}
+                      <strong>{recommendSelected.code}</strong>
+                      {recommendSelected.title ? ` — ${recommendSelected.title}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.ghostButton}
+                      onClick={() => clearRecommendSelection()}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                ) : null}
+                {recommendations.length ? (
+                  <div className={styles.recommenderGrid} data-testid="soc-recommend-list">
+                    {recommendations.map((item) => {
+                      const title = item.matchedOnetTitle ?? item.socTitle ?? 'Unknown title';
+                      const hasMoreDuties =
+                        item.dutiesAvailable && item.dutiesCount > dutiesPreviewCount;
+                      const isExpanded =
+                        !hasMoreDuties || recommendExpanded === item.matchedOnetCode;
+                      const showDutiesList = !isMobile || isExpanded;
+                      const dutiesToShow = isExpanded
+                        ? item.duties
+                        : item.duties.slice(0, dutiesPreviewCount);
+                      const remainingDuties = Math.max(item.dutiesCount - dutiesPreviewCount, 0);
+                      const isSelected = recommendSelected?.code === item.matchedOnetCode;
+                      const confidenceValue =
+                        item.confidence ?? item.similarity;
+                      const wagePreview = item.wageAvailable
+                        ? `${formatHourlyPreview(item.wageLevel1Hourly)} / hr | ${formatAnnualPreview(
+                          item.wageLevel1Annual,
+                        )} / yr`
+                        : 'No wage available';
+                      return (
+                        <div
+                          key={item.matchedOnetCode}
+                          className={styles.recommenderCard}
+                          role="button"
+                          tabIndex={0}
+                          data-testid="soc-recommend-card"
+                          data-onet-code={item.matchedOnetCode}
+                          onClick={() => handleRecommendSelect(item)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              handleRecommendSelect(item);
+                            }
+                          }}
+                        >
+                          <div className={styles.recommenderCardHeader}>
+                            <div>
+                              <div className={styles.recommenderCode}>{item.matchedOnetCode}</div>
+                              <div className={styles.recommenderTitle}>{title}</div>
+                            </div>
+                            {isSelected ? (
+                              <span className={styles.recommenderSelected}>✓ Selected</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className={`${styles.primaryButton} ${styles.recommenderSelect}`}
+                                data-testid="soc-recommend-select"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleRecommendSelect(item);
+                                }}
+                              >
+                                Select
+                              </button>
+                            )}
+                          </div>
+                          <div className={styles.recommenderWage}>
+                            <div className={styles.recommenderWageText} data-testid="soc-recommend-wage">
+                              <span className={styles.recommenderWageLabel}>Lv1 Prevailing Wage:</span>
+                              <span className={styles.recommenderWageValue}>{wagePreview}</span>
+                            </div>
+                            {item.wageHasDataQualityIssue ? (
+                              <span
+                                className={styles.recommenderQuality}
+                                data-testid="soc-recommend-quality"
+                              >
+                                Data quality flag
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className={styles.recommenderMetaRow}>
+                            <span className={styles.recommenderMetaItem}>
+                              Confidence: {formatMatchPercent(confidenceValue)}
+                            </span>
+                          </div>
+                          <div className={styles.recommenderDuties}>
+                            {item.dutiesAvailable ? (
+                              showDutiesList ? (
+                                <ul
+                                  className={`${styles.recommenderDutiesList} ${isExpanded ? styles.recommenderDutiesExpanded : styles.recommenderDutiesCollapsed}`}
+                                  data-testid="soc-recommend-duties"
+                                >
+                                  {dutiesToShow.map((duty, idx) => (
+                                    <li
+                                      key={`${item.matchedOnetCode}-${idx}`}
+                                      className={`${styles.recommenderDutyItem} ${isExpanded ? styles.recommenderDutyExpanded : styles.recommenderDutyCollapsed}`}
+                                    >
+                                      {duty}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className={styles.recommenderCollapsed}>
+                                  Duties available ({item.dutiesCount})
+                                </div>
+                              )
+                            ) : (
+                              <div className={styles.recommenderCollapsed}>No duties available.</div>
+                            )}
+                            {item.dutiesAvailable && hasMoreDuties ? (
+                              <button
+                                type="button"
+                                className={`${styles.secondaryButton} ${styles.recommenderToggle}`}
+                                data-testid="soc-recommend-duties-toggle"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setRecommendExpanded((prev) =>
+                                    prev === item.matchedOnetCode ? null : item.matchedOnetCode,
+                                  );
+                                }}
+                              >
+                                {isExpanded
+                                  ? 'Hide duties'
+                                  : `Show ${remainingDuties} more duties`}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : !recommendLoading && dutiesInput.trim() ? (
+                  <div className={styles.recommenderEmpty} data-testid="soc-recommend-empty">
+                    No recommendations yet. Click “Recommend O*NET Codes” to search.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {detectedMode === 'address_soc' ? (
                 <div className={styles.inlineRow}>
                   <label className={styles.field}>
                     <span className={styles.label}>Proposed Salary</span>

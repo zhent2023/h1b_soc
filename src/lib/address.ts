@@ -11,6 +11,7 @@ export interface ParsedAddress {
 
 const UNIT_RE = /\b(apt|unit|suite)\b/i;
 const PO_BOX_RE = /\bP\.?\s*O\.?\s*Box\b/i;
+const HAS_DIGIT_RE = /\d/;
 
 function splitLine(text: string): { line1: string; line2?: string; warning?: string } {
   const match = text.match(UNIT_RE);
@@ -120,31 +121,55 @@ export function parseFullAddress(fullText: string): ParsedAddress {
       warnings.push(lineSplit.warning);
     }
   } else if (parts.length === 2) {
-    const parsed = parseCityStateZip(parts[1]);
-    if (parsed) {
-      city = parsed.city;
-      state = parsed.state;
-      zip = parsed.zip;
+    const stateZip = parseStateZip(parts[1]);
+    const likelyCityOnly = Boolean(stateZip) && !HAS_DIGIT_RE.test(parts[0]);
+    if (stateZip && likelyCityOnly) {
+      city = parts[0];
+      state = stateZip.state;
+      zip = stateZip.zip;
+      line1 = '';
     } else {
-      city = parts[1];
-      warnings.push('City/state could not be parsed.');
-    }
-    const lineSplit = splitLine(parts[0]);
-    line1 = lineSplit.line1;
-    line2 = lineSplit.line2;
-    if (lineSplit.warning) {
-      warnings.push(lineSplit.warning);
+      const parsed = parseCityStateZip(parts[1]);
+      if (parsed) {
+        city = parsed.city;
+        state = parsed.state;
+        zip = parsed.zip;
+      } else {
+        city = parts[1];
+        warnings.push('City/state could not be parsed.');
+      }
+      const lineSplit = splitLine(parts[0]);
+      line1 = lineSplit.line1;
+      line2 = lineSplit.line2;
+      if (lineSplit.warning) {
+        warnings.push(lineSplit.warning);
+      }
     }
   } else {
-    warnings.push('Address is missing city/state.');
+    const cityState = parseCityStateZip(parts[0]);
+    if (cityState && !HAS_DIGIT_RE.test(cityState.city)) {
+      city = cityState.city;
+      state = cityState.state;
+      zip = cityState.zip;
+      line1 = '';
+    } else {
+      warnings.push('Address is missing city/state.');
+    }
   }
 
   let confidence: 'high' | 'medium' | 'low' = 'high';
+  const hasStreet = Boolean(line1 && line1.trim());
   if (!state || !city) {
     confidence = 'low';
-  } else if (!zip) {
-    confidence = 'medium';
-    warnings.push('ZIP code missing.');
+  } else {
+    if (!zip) {
+      confidence = 'medium';
+      warnings.push('ZIP code missing.');
+    }
+    if (!hasStreet) {
+      warnings.push('Street address missing; results may be approximate.');
+      confidence = zip ? 'medium' : 'low';
+    }
   }
 
   if (PO_BOX_RE.test(trimmed)) {
