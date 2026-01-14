@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -263,6 +264,7 @@ export default function HomePage() {
   const [candidateResults, setCandidateResults] = useState<any[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [candidateError, setCandidateError] = useState('');
+  const [showCandidateSearch, setShowCandidateSearch] = useState(false);
   const [authMode, setAuthMode] = useState<'public' | 'invite' | null>(null);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [dutiesCopied, setDutiesCopied] = useState(false);
@@ -270,6 +272,7 @@ export default function HomePage() {
   const socFetchId = useRef(0);
   const socBlurTimer = useRef<number | null>(null);
   const stateBlurTimer = useRef<number | null>(null);
+  const confirmationCardRef = useRef<HTMLDivElement | null>(null);
   const [stateSuggestionsOpen, setStateSuggestionsOpen] = useState(false);
   const [stateHighlightIndex, setStateHighlightIndex] = useState(-1);
   const recommenderEnabled = process.env.NEXT_PUBLIC_FEATURE_SOC_RECOMMENDER === 'true';
@@ -285,6 +288,8 @@ export default function HomePage() {
     title: string | null;
   } | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const stateListboxId = useId();
+  const socListboxId = useId();
 
   const addressMeta = useMemo(() => computeAddressMeta(addressDetails), [addressDetails]);
   const trimmedSoc = socCode.trim();
@@ -343,6 +348,16 @@ export default function HomePage() {
         entry.name.toLowerCase().startsWith(query),
     );
   }, [addressDetails.state]);
+  const stateActiveId =
+    stateSuggestionsOpen &&
+    stateHighlightIndex >= 0 &&
+    stateHighlightIndex < stateSuggestions.length
+      ? `${stateListboxId}-option-${stateSuggestions[stateHighlightIndex].code}`
+      : undefined;
+  const socActiveId =
+    socSuggestionsOpen && socHighlightIndex >= 0 && socHighlightIndex < socSuggestions.length
+      ? `${socListboxId}-option-${socSuggestions[socHighlightIndex].onetCode}`
+      : undefined;
 
   useEffect(() => {
     let active = true;
@@ -445,8 +460,18 @@ export default function HomePage() {
       setCandidateResults([]);
       setCandidateQuery('');
       setCandidateError('');
+      setShowCandidateSearch(false);
+      return;
     }
+    setShowCandidateSearch(false);
   }, [response]);
+
+  useEffect(() => {
+    if (response?.kind !== 'geo_needs_confirmation') return;
+    const node = confirmationCardRef.current;
+    if (!node) return;
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [response?.kind]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(confirmationStorageKey);
@@ -965,6 +990,17 @@ export default function HomePage() {
     }
   };
 
+  const openCandidateSearch = () => {
+    setShowCandidateSearch(true);
+  };
+
+  const closeCandidateSearch = () => {
+    setShowCandidateSearch(false);
+    setCandidateQuery('');
+    setCandidateResults([]);
+    setCandidateError('');
+  };
+
   const formatMoney = (value: number | null | undefined, unit: 'year' | 'hour') => {
     if (value === null || value === undefined) {
       return '—';
@@ -1012,6 +1048,9 @@ export default function HomePage() {
       if (!area) return 'Unknown area';
       return area.displayName || area.areaName || 'Unknown area';
     };
+    const combinedWarnings = Array.from(
+      new Set([...(response.warnings ?? []), ...(addressMeta.warnings ?? [])]),
+    );
 
     return (
       <div className={styles.results} data-testid="results">
@@ -1022,13 +1061,98 @@ export default function HomePage() {
           </span>
         </div>
 
-        {response.warnings?.length ? (
+        {combinedWarnings.length ? (
           <div className={styles.warning} data-testid="warnings">
-            Warnings: {response.warnings.join('; ')}
+            Warnings: {combinedWarnings.join('; ')}
           </div>
         ) : null}
 
         <div className={styles.resultsGrid}>
+          {response.kind === 'geo_needs_confirmation' && response.confirmation?.suggestions ? (
+            <div
+              ref={confirmationCardRef}
+              className={`${styles.card} ${styles.spanTwo} ${styles.confirmationCard}`}
+              data-testid="confirmation-card"
+            >
+              <h3 className={styles.cardTitle}>Confirmation Needed</h3>
+              <ul className={styles.list} data-testid="confirmation-list">
+                {response.confirmation.suggestions.map((entry: any) => (
+                  <li key={`${entry.areaCode}-${entry.countyFips}`}>
+                    {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
+                    <button
+                      className={styles.chipButton}
+                      type="button"
+                      onClick={() => resendWithOverride(entry.areaCode)}
+                    >
+                      Use
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {showCandidateSearch ? (
+                <div className={styles.confirmationSearch}>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={closeCandidateSearch}
+                  >
+                    Hide search
+                  </button>
+                  <div className={styles.formGrid}>
+                    <label className={styles.field}>
+                      <span className={styles.label}>Search by county/town name</span>
+                      <input
+                        className={styles.input}
+                        value={candidateQuery}
+                        onChange={(event) => setCandidateQuery(event.target.value)}
+                        data-testid="candidate-search-input"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => runCandidateSearch()}
+                      disabled={candidateLoading}
+                      data-testid="candidate-search-button"
+                    >
+                      {candidateLoading ? 'Searching...' : 'Search'}
+                    </button>
+                    {candidateError ? (
+                      <div className={styles.error} data-testid="candidate-error">
+                        {candidateError}
+                      </div>
+                    ) : null}
+                    {candidateResults.length ? (
+                      <ul className={styles.list} data-testid="candidate-results">
+                        {candidateResults.map((entry) => (
+                          <li key={`${entry.areaCode}-${entry.countyFips}`}>
+                            {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
+                            <button
+                              className={styles.chipButton}
+                              type="button"
+                              onClick={() => resendWithOverride(entry.areaCode)}
+                            >
+                              Use
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.confirmationToggle}>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={openCandidateSearch}
+                  >
+                    Can't find your county? Search manually
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
           <div className={`${styles.card} ${styles.primaryCard}`}>
             <h3 className={styles.cardTitle}>County / Township</h3>
             {hasGeo ? (
@@ -1270,68 +1394,6 @@ export default function HomePage() {
             </ul>
           </div>
         ) : null}
-
-        {response.kind === 'geo_needs_confirmation' && response.confirmation?.suggestions ? (
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Confirmation Needed</h3>
-            <ul className={styles.list} data-testid="confirmation-list">
-              {response.confirmation.suggestions.map((entry: any) => (
-                <li key={`${entry.areaCode}-${entry.countyFips}`}>
-                  {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
-                  <button
-                    className={styles.chipButton}
-                    type="button"
-                    onClick={() => resendWithOverride(entry.areaCode)}
-                  >
-                    Use
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div className={styles.formGrid}>
-              <label className={styles.field}>
-                <span className={styles.label}>Search candidates</span>
-                <input
-                  className={styles.input}
-                  value={candidateQuery}
-                  onChange={(event) => setCandidateQuery(event.target.value)}
-                  placeholder="Middlesex"
-                  data-testid="candidate-search-input"
-                />
-              </label>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => runCandidateSearch()}
-                disabled={candidateLoading}
-                data-testid="candidate-search-button"
-              >
-                {candidateLoading ? 'Searching...' : 'Search'}
-              </button>
-              {candidateError ? (
-                <div className={styles.error} data-testid="candidate-error">
-                  {candidateError}
-                </div>
-              ) : null}
-              {candidateResults.length ? (
-                <ul className={styles.list} data-testid="candidate-results">
-                  {candidateResults.map((entry) => (
-                    <li key={`${entry.areaCode}-${entry.countyFips}`}>
-                      {entry.countyTownName} → {entry.areaName} ({entry.areaCode})
-                      <button
-                        className={styles.chipButton}
-                        type="button"
-                        onClick={() => resendWithOverride(entry.areaCode)}
-                      >
-                        Use
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
       </div>
     );
   };
@@ -1413,20 +1475,10 @@ export default function HomePage() {
             <div className={styles.formGrid}>
               <div className={styles.field}>
                 <span className={styles.label}>Address</span>
+                <div className={styles.helper}>
+                  Paste a full address into Line 1 to auto-fill City, State, and ZIP.
+                </div>
                 <div className={styles.detailCard} data-testid="address-details">
-                  <div className={styles.helper}>
-                    Paste a full address into Line 1 to auto-fill City, State, and ZIP.
-                  </div>
-                  {hasAddressInput ? (
-                    <div className={styles.helper} data-testid="address-confidence">
-                      Parsed confidence: {addressMeta.confidence}
-                    </div>
-                  ) : null}
-                  {addressMeta.warnings.length ? (
-                    <div className={styles.warning} data-testid="address-warnings">
-                      {addressMeta.warnings.join('; ')}
-                    </div>
-                  ) : null}
                   <div className={styles.formGrid}>
                     <label className={styles.field}>
                       <span className={styles.label}>Line 1</span>
@@ -1490,14 +1542,20 @@ export default function HomePage() {
                             }}
                             onKeyDown={handleStateKeyDown}
                             data-testid="address-state"
+                            role="combobox"
                             aria-autocomplete="list"
                             aria-expanded={stateSuggestionsOpen}
                             aria-haspopup="listbox"
+                            aria-controls={stateSuggestionsOpen ? stateListboxId : undefined}
+                            aria-activedescendant={
+                              stateSuggestionsOpen ? stateActiveId : undefined
+                            }
                           />
                           {stateSuggestionsOpen ? (
                             <div
                               className={styles.suggestionsPanel}
                               role="listbox"
+                              id={stateListboxId}
                               data-testid="state-suggestions"
                             >
                               {stateSuggestions.length ? (
@@ -1506,12 +1564,13 @@ export default function HomePage() {
                                     const isActive = index === stateHighlightIndex;
                                     return (
                                       <li key={entry.code}>
-                                        <button
-                                          type="button"
-                                          className={`${styles.suggestionItem} ${isActive ? styles.suggestionItemActive : ''}`}
-                                          onMouseDown={(event) => {
-                                            event.preventDefault();
-                                            handleStateSelect(entry.code);
+                                    <button
+                                      type="button"
+                                      className={`${styles.suggestionItem} ${isActive ? styles.suggestionItemActive : ''}`}
+                                      id={`${stateListboxId}-option-${entry.code}`}
+                                      onMouseDown={(event) => {
+                                        event.preventDefault();
+                                        handleStateSelect(entry.code);
                                           }}
                                           onMouseEnter={() => setStateHighlightIndex(index)}
                                           role="option"
@@ -1572,12 +1631,20 @@ export default function HomePage() {
                     onKeyDown={handleSocKeyDown}
                     placeholder="15-1211.00 or software"
                     data-testid="soc-input"
+                    role="combobox"
                     aria-autocomplete="list"
                     aria-expanded={socSuggestionsOpen}
                     aria-haspopup="listbox"
+                    aria-controls={socSuggestionsOpen ? socListboxId : undefined}
+                    aria-activedescendant={socSuggestionsOpen ? socActiveId : undefined}
                   />
                   {socSuggestionsOpen ? (
-                    <div className={styles.suggestionsPanel} role="listbox" data-testid="soc-suggestions">
+                    <div
+                      className={styles.suggestionsPanel}
+                      role="listbox"
+                      id={socListboxId}
+                      data-testid="soc-suggestions"
+                    >
                       {socSuggestionsLoading ? (
                         <div className={styles.suggestionsStatus}>Searching occupations...</div>
                       ) : null}
@@ -1594,6 +1661,7 @@ export default function HomePage() {
                                   <button
                                     type="button"
                                     className={`${styles.suggestionItem} ${isActive ? styles.suggestionItemActive : ''}`}
+                                    id={`${socListboxId}-option-${entry.onetCode}`}
                                     onMouseDown={(event) => {
                                       event.preventDefault();
                                       handleSocSelect(entry);
