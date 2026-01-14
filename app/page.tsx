@@ -287,7 +287,7 @@ export default function HomePage() {
     code: string;
     title: string | null;
   } | null>(null);
-  const [recommendOpen, setRecommendOpen] = useState(false);
+  const [recommendOpen, setRecommendOpen] = useState(true);
   const [socInputFlash, setSocInputFlash] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const stateListboxId = useId();
