@@ -58,6 +58,8 @@ export default defineConfig({
       ACCESS_MODE: 'invite',
       GEOCODER_PROVIDER: 'stub',
       FEATURE_WAGE_QUALITY_BANNER: 'true',
+      FEATURE_SOC_RECOMMENDER: 'true',
+      NEXT_PUBLIC_FEATURE_SOC_RECOMMENDER: 'true',
     },
   },
 });

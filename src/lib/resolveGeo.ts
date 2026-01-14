@@ -35,6 +35,13 @@ export interface ResolveGeoResult {
   explain: string[];
 }
 
+export interface ResolveTownResult {
+  result: ResolveGeoResult;
+  countyFips?: string;
+  countyName?: string;
+  placeName: string;
+}
+
 function normalizeText(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -292,5 +299,193 @@ export async function resolveOflcArea(params: {
     kind: 'needs_confirmation',
     explain,
     suggestions: buildSuggestions(suggestions),
+  };
+}
+
+export async function resolveOflcAreaByTown(params: {
+  prisma: PrismaClient;
+  datasetVersionId: string;
+  stateAb: string;
+  townName: string;
+  cbsaVersionId?: string;
+}): Promise<ResolveTownResult> {
+  const { prisma, datasetVersionId, stateAb, townName, cbsaVersionId } = params;
+  const explain: string[] = [`City-only match: ${townName}.`];
+  const normalizedTown = normalizePlaceName(townName);
+
+  const townMatches = await prisma.oflcAreaCounty.findMany({
+    where: {
+      datasetVersionId,
+      stateAb,
+      countyTownNameNorm: normalizedTown,
+      matchKind: 'town',
+    },
+    include: {
+      area: true,
+    },
+  });
+
+  if (townMatches.length > 1) {
+    explain.push(`Multiple town matches for ${townName}.`);
+    return {
+      result: {
+        kind: 'needs_confirmation',
+        explain,
+        suggestions: buildSuggestions(townMatches),
+      },
+      placeName: townName,
+    };
+  }
+
+  if (townMatches.length === 1) {
+    const townMatch = townMatches[0];
+    explain.push(`Matched town name ${townName}.`);
+    const cbsa = await resolveCbsaMeta({
+      prisma,
+      cbsaVersionId,
+      countyFips: townMatch.countyFips,
+    });
+
+    const countyName =
+      cbsaVersionId && townMatch.countyFips
+        ? (
+          await prisma.geoCounty.findFirst({
+            where: { datasetVersionId: cbsaVersionId, countyFips: townMatch.countyFips },
+            select: { countyName: true },
+          })
+        )?.countyName
+        : undefined;
+
+    return {
+      result: {
+        kind: 'resolved',
+        area: {
+          areaCode: townMatch.areaCode,
+          areaName: townMatch.area.areaName,
+          stateAb: townMatch.area.stateAb,
+          matchKind: townMatch.matchKind,
+        },
+        cbsa,
+        explain,
+      },
+      countyFips: townMatch.countyFips,
+      countyName,
+      placeName: townName,
+    };
+  }
+
+  const areaMatches = await prisma.oflcArea.findMany({
+    where: {
+      datasetVersionId,
+      stateAb,
+      areaName: { contains: townName, mode: 'insensitive' },
+    },
+  });
+  if (areaMatches.length > 0) {
+    const exactName = `${townName}, ${stateAb}`;
+    const exactMatch = areaMatches.find(
+      (entry) => entry.areaName.toLowerCase() === exactName.toLowerCase(),
+    );
+    if (exactMatch) {
+      explain.push(`Matched area name ${exactMatch.areaName}.`);
+      const countyFips = (
+        await prisma.oflcAreaCounty.findFirst({
+          where: { datasetVersionId, areaCode: exactMatch.areaCode, stateAb },
+          select: { countyFips: true },
+        })
+      )?.countyFips;
+      const cbsa = await resolveCbsaMeta({
+        prisma,
+        cbsaVersionId,
+        countyFips,
+      });
+      return {
+        result: {
+          kind: 'resolved',
+          area: {
+            areaCode: exactMatch.areaCode,
+            areaName: exactMatch.areaName,
+            stateAb: exactMatch.stateAb,
+            matchKind: 'area_name',
+          },
+          cbsa,
+          explain,
+        },
+        placeName: townName,
+      };
+    }
+
+    if (areaMatches.length === 1) {
+      const onlyMatch = areaMatches[0];
+      explain.push(`Matched area name ${onlyMatch.areaName}.`);
+      const countyFips = (
+        await prisma.oflcAreaCounty.findFirst({
+          where: { datasetVersionId, areaCode: onlyMatch.areaCode, stateAb },
+          select: { countyFips: true },
+        })
+      )?.countyFips;
+      const cbsa = await resolveCbsaMeta({
+        prisma,
+        cbsaVersionId,
+        countyFips,
+      });
+      return {
+        result: {
+          kind: 'resolved',
+          area: {
+            areaCode: onlyMatch.areaCode,
+            areaName: onlyMatch.areaName,
+            stateAb: onlyMatch.stateAb,
+            matchKind: 'area_name',
+          },
+          cbsa,
+          explain,
+        },
+        placeName: townName,
+      };
+    }
+
+    explain.push(`Area name contains ${townName}.`);
+    const suggestions: ResolveGeoSuggestion[] = areaMatches.map((entry) => ({
+      areaCode: entry.areaCode,
+      areaName: entry.areaName,
+      areaType: 'oflc',
+      stateAb: entry.stateAb ?? stateAb,
+      countyFips: '',
+      countyTownName: townName,
+      matchKind: 'area_name',
+    }));
+    return {
+      result: {
+        kind: 'needs_confirmation',
+        explain,
+        suggestions,
+      },
+      placeName: townName,
+    };
+  }
+
+  const suggestions = await prisma.oflcAreaCounty.findMany({
+    where: {
+      datasetVersionId,
+      stateAb,
+    },
+    include: {
+      area: true,
+    },
+    distinct: ['areaCode'],
+    orderBy: [{ countyTownNameNorm: 'asc' }, { areaCode: 'asc' }],
+    take: 10,
+  });
+
+  explain.push('No direct town match; returning confirmation candidates.');
+
+  return {
+    result: {
+      kind: 'needs_confirmation',
+      explain,
+      suggestions: buildSuggestions(suggestions),
+    },
+    placeName: townName,
   };
 }

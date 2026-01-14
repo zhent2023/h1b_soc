@@ -72,6 +72,14 @@ function buildCensusUrl(input: GeocodeInput): string | null {
 
   const hasStructured = Boolean(input.line1 || input.city || input.state || input.zip);
   if (hasStructured) {
+    const hasStreet = Boolean(input.line1 && input.line1.trim());
+    if (!hasStreet) {
+      const address = [input.city, input.state, input.zip].filter(Boolean).join(' ');
+      if (address) {
+        params.set('address', address);
+        return `${base}/onelineaddress?${params.toString()}`;
+      }
+    }
     params.set('street', input.line1 ?? '');
     params.set('city', input.city ?? '');
     params.set('state', input.state ?? '');

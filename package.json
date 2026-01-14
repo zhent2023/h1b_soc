@@ -14,7 +14,7 @@
     "db:query": "tsx scripts/db/query.ts",
     "test": "vitest run && pnpm lint && pnpm vercel-build",
     "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration --passWithNoTests",
+    "test:integration": "vitest run tests/integration --passWithNoTests --no-file-parallelism",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "e2e": "playwright test",

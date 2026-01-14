@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 
 import type { GeocodeInput, GeocodeResult } from './geocoder';
 import { geocode } from './geocoder';
-import type { ResolveGeoSuggestion } from './resolveGeo';
+import type { ResolveGeoResult, ResolveGeoSuggestion } from './resolveGeo';
 import { resolveOflcArea } from './resolveGeo';
 import type { WageRateDTO, AreaWageRow, WageLevel, SalaryUnit } from './wages';
 import { computeMetWageLevel, getSocExtremes, getWageRate } from './wages';
@@ -116,6 +116,22 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return value === 'true';
 }
 
+function normalizeSaint(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\bsaint\b/g, 'st')
+    .replace(/\bste\b/g, 'st');
+}
+
+function normalizeCityName(value: string): string {
+  return normalizeSaint(value).replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizeOflcCountyName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 async function maybeDelay() {
   const raw = process.env.LOOKUP_DELAY_MS;
   if (!raw) return;
@@ -144,6 +160,12 @@ export async function lookup(
   const oflcVersionId = datasetContext.oflcVersionId;
   const onetVersionId = datasetContext.onetVersionId;
   const cbsaVersionId = datasetContext.cbsaVersionId;
+  const cityCountyVersionId = (
+    await prisma.datasetVersion.findFirst({
+      where: { datasetName: 'city_county', isActive: true },
+      select: { id: true },
+    })
+  )?.id;
   await maybeDelay();
 
   const defaultWageYear = process.env.DEFAULT_WAGE_YEAR ?? '2025-2026';
@@ -159,7 +181,15 @@ export async function lookup(
   if (address?.fullText) {
     const parsed = parseFullAddress(address.fullText);
     if (parsed.warnings.length) {
-      warnings.push(...parsed.warnings);
+      const hasCityState = Boolean(address.city && address.state);
+      const filtered = hasCityState
+        ? parsed.warnings.filter(
+            (warning) =>
+              warning !== 'Address is missing city/state.' &&
+              warning !== 'City/state could not be parsed.',
+          )
+        : parsed.warnings;
+      warnings.push(...filtered);
     }
     const baseLine1 = address.line1?.trim() || parsed.line1;
     const line1 =
@@ -226,10 +256,188 @@ export async function lookup(
   };
 
   if (address) {
-    const geocodeResult = await geocode(address);
+    const line1Value = address.line1?.trim() ?? '';
+    const cityValue = address.city?.trim() ?? '';
+    const hasStreet =
+      Boolean(line1Value) && (!cityValue || line1Value.toLowerCase() !== cityValue.toLowerCase());
+    const hasCityState = Boolean(address.city && address.state);
+    const isCityOnly = hasCityState && !hasStreet;
+    let geocodeResult = await geocode(address);
+    let cityCountySuggestions: ResolveGeoSuggestion[] | null = null;
+
+    if (isCityOnly && !req.override?.areaCode) {
+      warnings.push('City-level match; results may be approximate.');
+
+      if (cityCountyVersionId && !geocodeResult.countyFips) {
+        const cityName = address.city?.trim() ?? '';
+        const stateRaw = address.state?.trim() ?? '';
+        const stateAb = stateRaw.length === 2 ? stateRaw.toUpperCase() : geocodeResult.stateAb;
+        const cityNameNorm = cityName ? normalizeCityName(cityName) : '';
+
+        if (stateAb && stateAb !== 'NA' && cityNameNorm) {
+          const cityMatches = await prisma.geoCityCounty.findMany({
+            where: {
+              datasetVersionId: cityCountyVersionId,
+              stateAb,
+              cityNameNorm,
+            },
+            select: {
+              cityName: true,
+              countyName: true,
+              countyNameNorm: true,
+              countyFips: true,
+            },
+          });
+
+          const uniqueMatches = Array.from(
+            new Map(
+              cityMatches.map((match) => {
+                const key = match.countyFips ?? `${match.countyNameNorm}:${match.countyName}`;
+                return [key, match] as const;
+              }),
+            ).values(),
+          );
+
+          if (uniqueMatches.length === 1) {
+            const match = uniqueMatches[0];
+            geocodeResult = {
+              ...geocodeResult,
+              stateAb,
+              countyFips: match.countyFips ?? geocodeResult.countyFips,
+              countyName: match.countyName ?? geocodeResult.countyName,
+              confidence:
+                geocodeResult.confidence === 'low' ? 'medium' : geocodeResult.confidence,
+              explain: [
+                ...geocodeResult.explain,
+                `City dataset matched ${match.countyName}.`,
+              ],
+            };
+          } else if (uniqueMatches.length > 1) {
+            const countyFipses = Array.from(
+              new Set(
+                uniqueMatches
+                  .map((match) => match.countyFips)
+                  .filter((fips): fips is string => Boolean(fips)),
+              ),
+            );
+
+            const buildSuggestions = (areaMatches: Array<any>) => {
+              const seenKeys = new Set<string>();
+              return areaMatches
+                .filter((entry) => {
+                  const usableFips =
+                    entry.countyFips && entry.countyFips !== '00000'
+                      ? entry.countyFips
+                      : '';
+                  const key = `${entry.areaCode}:${usableFips || entry.countyTownName}`;
+                  if (seenKeys.has(key)) return false;
+                  seenKeys.add(key);
+                  return true;
+                })
+                .map((entry) => ({
+                  areaCode: entry.areaCode,
+                  areaName: entry.area.areaName,
+                  areaType: 'oflc',
+                  stateAb: entry.stateAb,
+                  countyFips: entry.countyFips,
+                  countyTownName: entry.countyTownName,
+                  matchKind: entry.matchKind,
+                }));
+            };
+
+            if (countyFipses.length > 0) {
+              const areaMatches = await prisma.oflcAreaCounty.findMany({
+                where: {
+                  datasetVersionId: oflcVersionId,
+                  countyFips: { in: countyFipses },
+                  matchKind: 'county',
+                },
+                include: {
+                  area: true,
+                },
+                orderBy: [{ countyTownNameNorm: 'asc' }, { areaCode: 'asc' }],
+              });
+              cityCountySuggestions = buildSuggestions(areaMatches);
+            }
+
+            if (!cityCountySuggestions?.length) {
+              const countyNames = Array.from(
+                new Set(
+                  uniqueMatches
+                    .map((match) => normalizeOflcCountyName(match.countyName ?? ''))
+                    .filter((name) => name.length > 0),
+                ),
+              );
+              if (countyNames.length > 0) {
+                const areaMatches = await prisma.oflcAreaCounty.findMany({
+                  where: {
+                    datasetVersionId: oflcVersionId,
+                    stateAb,
+                    countyTownNameNorm: { in: countyNames },
+                    matchKind: 'county',
+                  },
+                  include: {
+                    area: true,
+                  },
+                  orderBy: [{ countyTownNameNorm: 'asc' }, { areaCode: 'asc' }],
+                });
+                cityCountySuggestions = buildSuggestions(areaMatches);
+              }
+            }
+
+            if (cityCountySuggestions?.length) {
+              geocodeResult = {
+                ...geocodeResult,
+                stateAb,
+                explain: [
+                  ...geocodeResult.explain,
+                  `City dataset returned ${uniqueMatches.length} counties.`,
+                ],
+              };
+            }
+          }
+        }
+      }
+    }
+
     explainSummary.push(...geocodeResult.explain);
 
-    const resolveResult = await resolveOflcArea({
+    if (cityCountySuggestions?.length) {
+      const extremes = soc6
+        ? await getSocExtremes({
+            prisma,
+            datasetVersionId: oflcVersionId,
+            wageYear,
+            isAcwia,
+            socCode: soc6,
+            metric: 'l1Annual',
+            n: 8,
+          })
+        : undefined;
+      return {
+        kind: 'geo_needs_confirmation',
+        datasetVersions: {
+          oflc: versionsByName.oflc,
+          onet: versionsByName.onet,
+          cbsa: versionsByName.cbsa,
+        },
+        featureFlags,
+        explain: { summary: getSummary() },
+        geo: {
+          geocode: geocodeResult,
+          countyName: geocodeResult.countyName,
+          placeName: geocodeResult.placeName,
+        },
+        confirmation: {
+          suggestions: cityCountySuggestions,
+        },
+        extremes,
+        warnings: warnings.length ? warnings : undefined,
+      };
+    }
+
+    let resolveResult: ResolveGeoResult;
+    resolveResult = await resolveOflcArea({
       prisma,
       datasetVersionId: oflcVersionId,
       geocode: geocodeResult,
@@ -237,7 +445,6 @@ export async function lookup(
       featureTownMatching: parseBoolean(process.env.FEATURE_TOWN_MATCHING, true),
       cbsaVersionId,
     });
-
     explainSummary.push(...resolveResult.explain);
 
     if (resolveResult.kind === 'needs_confirmation') {
