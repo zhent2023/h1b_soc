@@ -18,7 +18,7 @@
       transparent 72px),
     linear-gradient(180deg, #0f172a 0%, #16274a 100%);
   color: var(--color-ink);
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 .background {
@@ -320,6 +320,17 @@
   background: rgba(17, 27, 50, 0.6);
 }
 
+.recommenderPrompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  background: rgba(17, 27, 50, 0.45);
+}
+
 .recommenderHeader {
   display: flex;
   align-items: center;
@@ -354,6 +365,11 @@
 
 .recommenderTextarea {
   min-height: 120px;
+}
+
+.recommenderActions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .recommenderBanner {
@@ -648,6 +664,14 @@
   outline: none;
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--glow-primary);
+}
+
+.inputHighlight {
+  border-color: rgba(56, 189, 248, 0.75);
+  box-shadow:
+    0 0 0 3px rgba(56, 189, 248, 0.25),
+    0 12px 26px rgba(56, 189, 248, 0.2);
+  animation: inputGlow 1.2s ease;
 }
 
 .inlineRow {
@@ -1214,6 +1238,22 @@
   }
 }
 
+@keyframes inputGlow {
+  0% {
+    border-color: rgba(56, 189, 248, 0.95);
+    box-shadow:
+      0 0 0 4px rgba(56, 189, 248, 0.35),
+      0 16px 30px rgba(56, 189, 248, 0.28);
+  }
+
+  100% {
+    border-color: rgba(56, 189, 248, 0.75);
+    box-shadow:
+      0 0 0 3px rgba(56, 189, 248, 0.2),
+      0 10px 22px rgba(56, 189, 248, 0.16);
+  }
+}
+
 @keyframes confirmationPulse {
   0% {
     border-color: rgba(56, 189, 248, 0.9);
@@ -1279,6 +1319,19 @@
 
   .recommenderSelect {
     align-self: flex-start;
+  }
+
+  .recommenderActions {
+    justify-content: stretch;
+  }
+
+  .primaryButton.recommenderAction {
+    width: 100%;
+  }
+
+  .recommenderPrompt {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
