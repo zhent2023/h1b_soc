@@ -1147,7 +1147,7 @@ export default function HomePage() {
                     className={styles.ghostButton}
                     onClick={openCandidateSearch}
                   >
-                    Can't find your county? Search manually
+                    Cannot find your county? Search manually
                   </button>
                 </div>
               )}
