@@ -28,4 +28,3 @@ data/
 .vercel
 .env*.local
 *.tsbuildinfo
-docs/transcript-skills-onet-implementation-plan.md
