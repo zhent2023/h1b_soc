@@ -89,4 +89,31 @@ describe('parseFullAddress', () => {
     expect(cityZipNoComma.confidence).toBe('medium');
     expect(cityZipNoComma.warnings.join(' ')).toContain('Street address missing');
   });
+
+  it('handles empty and malformed addresses', () => {
+    const empty = parseFullAddress('   ');
+    expect(empty.confidence).toBe('low');
+    expect(empty.warnings.join(' ')).toContain('Address is empty');
+
+    const malformed = parseFullAddress('12345');
+    expect(malformed.confidence).toBe('low');
+    expect(malformed.warnings.join(' ')).toContain('missing city/state');
+  });
+
+  it('keeps extra address segments and warns', () => {
+    const parsed = parseFullAddress('123 Main, Building A, Boston, MA 02101');
+    expect(parsed.line1).toBe('123 Main, Building A');
+    expect(parsed.warnings.join(' ')).toContain('Additional address segments');
+  });
+
+  it('reports unit parsing warnings when needed', () => {
+    const parsed = parseFullAddress('Unit 5, Boston, MA 02101');
+    expect(parsed.line1).toBe('Unit 5');
+    expect(parsed.warnings.join(' ')).toContain('Unit designator');
+  });
+
+  it('warns when city/state cannot be parsed from two segments', () => {
+    const parsed = parseFullAddress('123 Main, Unknownland');
+    expect(parsed.warnings.join(' ')).toContain('City/state could not be parsed');
+  });
 });

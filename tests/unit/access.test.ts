@@ -117,4 +117,59 @@ describe('requireAccess', () => {
       }
     }
   });
+
+  it('rejects when access user is missing', async () => {
+    const previousMode = process.env.ACCESS_MODE;
+    process.env.ACCESS_MODE = 'invite';
+
+    const prisma = {
+      session: { findFirst: vi.fn().mockResolvedValue(null) },
+      accessUser: { findFirst: vi.fn().mockResolvedValue(null) },
+    } as unknown as PrismaClient;
+
+    const req = new Request('http://localhost', {
+      headers: {
+        'x-access-email': 'missing@example.com',
+        'x-access-key': 'demo-key',
+      },
+    });
+
+    try {
+      await expect(requireAccess(req, prisma)).rejects.toBeInstanceOf(AccessError);
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.ACCESS_MODE;
+      } else {
+        process.env.ACCESS_MODE = previousMode;
+      }
+    }
+  });
+
+  it('rejects when access key does not match', async () => {
+    const previousMode = process.env.ACCESS_MODE;
+    process.env.ACCESS_MODE = 'invite';
+
+    const keyHash = await bcrypt.hash('correct-key', 4);
+    const prisma = {
+      session: { findFirst: vi.fn().mockResolvedValue(null) },
+      accessUser: { findFirst: vi.fn().mockResolvedValue({ email: 'demo@example.com', keyHash }) },
+    } as unknown as PrismaClient;
+
+    const req = new Request('http://localhost', {
+      headers: {
+        'x-access-email': 'demo@example.com',
+        'x-access-key': 'wrong-key',
+      },
+    });
+
+    try {
+      await expect(requireAccess(req, prisma)).rejects.toBeInstanceOf(AccessError);
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.ACCESS_MODE;
+      } else {
+        process.env.ACCESS_MODE = previousMode;
+      }
+    }
+  });
 });

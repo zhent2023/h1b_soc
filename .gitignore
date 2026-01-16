@@ -16,6 +16,7 @@ pnpm-debug.log*
 
 # test artifacts
 test-results/
+coverage/
 
 # cache
 .cache/
@@ -27,3 +28,4 @@ data/
 .vercel
 .env*.local
 *.tsbuildinfo
+docs/transcript-skills-onet-implementation-plan.md

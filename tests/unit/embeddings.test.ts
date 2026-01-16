@@ -32,6 +32,13 @@ describe('vectorUtils', () => {
     expect(literal).toContain('0.123457');
     expect(literal.split(',').length).toBe(EMBEDDING_DIM);
   });
+
+  it('normalizes negative zero values', () => {
+    const values = Array.from({ length: EMBEDDING_DIM }, () => 0);
+    values[0] = -0;
+    const literal = toVectorLiteral(values);
+    expect(literal.startsWith('[0')).toBe(true);
+  });
 });
 
 describe('providerStub', () => {
@@ -47,6 +54,13 @@ describe('providerStub', () => {
     const first = await provider.embedQuery('alpha');
     const second = await provider.embedQuery('beta');
     expect(first).not.toEqual(second);
+  });
+
+  it('embeds documents with consistent dimensions', async () => {
+    const provider = createStubProvider('stub');
+    const vectors = await provider.embedDocuments(['one', 'two']);
+    expect(vectors).toHaveLength(2);
+    expect(vectors[0]).toHaveLength(EMBEDDING_DIM);
   });
 });
 
@@ -88,5 +102,19 @@ describe('buildOnetEmbeddingDocument', () => {
 
     expect(contentText.length).toBeLessThanOrEqual(10);
     expect(truncated).toBe(true);
+  });
+
+  it('filters empty duty entries', () => {
+    const { contentText, dutyCount } = buildOnetEmbeddingDocument(
+      [
+        { dutyText: 'Duty A', sortOrder: 1 },
+        { dutyText: '   ', sortOrder: 2 },
+        { dutyText: '', sortOrder: 3 },
+      ],
+      { maxDuties: 5, maxChars: 200 },
+    );
+
+    expect(dutyCount).toBe(1);
+    expect(contentText).toBe('Duty A');
   });
 });

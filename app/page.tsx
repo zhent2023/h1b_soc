@@ -294,6 +294,18 @@ export default function HomePage() {
   const socListboxId = useId();
   const socInputRef = useRef<HTMLInputElement | null>(null);
   const socInputFlashTimer = useRef<number | null>(null);
+  const lastUserScrollRef = useRef(0);
+
+  const scrollIntoViewSafely = (node: HTMLElement) => {
+    const rect = node.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const inView = rect.top >= 0 && rect.bottom <= viewportHeight;
+    if (inView) return;
+    const now = Date.now();
+    const shouldSmooth = now - lastUserScrollRef.current > 300;
+    // Avoid smooth scroll fighting user scroll while keeping auto-jump.
+    node.scrollIntoView({ behavior: shouldSmooth ? 'smooth' : 'auto', block: 'center' });
+  };
 
   const addressMeta = useMemo(() => computeAddressMeta(addressDetails), [addressDetails]);
   const trimmedSoc = socCode.trim();
@@ -401,6 +413,33 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    const markScrollIntent = () => {
+      lastUserScrollRef.current = Date.now();
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.key === 'ArrowDown' ||
+        event.key === 'ArrowUp' ||
+        event.key === 'PageDown' ||
+        event.key === 'PageUp' ||
+        event.key === 'Home' ||
+        event.key === 'End' ||
+        event.key === ' '
+      ) {
+        markScrollIntent();
+      }
+    };
+    window.addEventListener('wheel', markScrollIntent, { passive: true });
+    window.addEventListener('touchmove', markScrollIntent, { passive: true });
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('wheel', markScrollIntent);
+      window.removeEventListener('touchmove', markScrollIntent);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
     const query = socInput.trim();
     const selectionLabel =
       socSelectedTitle && socCode
@@ -482,7 +521,7 @@ export default function HomePage() {
     if (response?.kind !== 'geo_needs_confirmation') return;
     const node = confirmationCardRef.current;
     if (!node) return;
-    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    scrollIntoViewSafely(node);
   }, [response?.kind]);
 
   useEffect(() => {
@@ -797,7 +836,7 @@ export default function HomePage() {
     setSocInputFlash(true);
     if (socInputRef.current) {
       socInputRef.current.focus();
-      socInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      scrollIntoViewSafely(socInputRef.current);
     }
     socInputFlashTimer.current = window.setTimeout(() => {
       setSocInputFlash(false);
