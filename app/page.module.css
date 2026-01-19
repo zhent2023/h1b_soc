@@ -26,6 +26,7 @@
   inset: 0;
   pointer-events: none;
   opacity: 0.45;
+  overflow: hidden;
 }
 
 .orb {
@@ -374,6 +375,7 @@
 
 .transcriptTableWrapper {
   overflow-x: auto;
+  overscroll-behavior: contain;
 }
 
 .transcriptTable {
@@ -734,6 +736,7 @@
   gap: 8px;
   max-height: 220px;
   overflow: auto;
+  overscroll-behavior: contain;
   padding-right: 4px;
 }
 
@@ -770,11 +773,13 @@
 }
 
 @keyframes transcriptPulse {
+
   0%,
   100% {
     opacity: 0.4;
     transform: scale(0.9);
   }
+
   50% {
     opacity: 1;
     transform: scale(1.1);
@@ -785,6 +790,7 @@
   0% {
     transform: translateX(0);
   }
+
   100% {
     transform: translateX(240%);
   }
@@ -794,6 +800,7 @@
   0% {
     width: 0;
   }
+
   100% {
     width: 14px;
   }
@@ -1148,6 +1155,7 @@
   gap: 6px;
   max-height: 260px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .suggestionItem {

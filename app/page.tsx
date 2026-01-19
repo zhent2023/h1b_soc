@@ -17,6 +17,7 @@ import { put } from '@vercel/blob/client';
 
 import { parseFullAddress, type ParsedAddress } from '../src/lib/address';
 import { useTranscriptState, type TranscriptEntry, type TranscriptScoreDebug } from './transcript-state';
+import { formatMatchPercent, formatHourlyPreview, formatAnnualPreview } from './helpers/formatters';
 import styles from './page.module.css';
 
 type DetectedMode = 'address' | 'address_soc' | 'soc' | 'none';
@@ -408,8 +409,8 @@ export default function HomePage() {
     () =>
       skillsMatchingEnabled
         ? transcripts
-            .filter((entry) => READY_TRANSCRIPT_STATUSES.has(entry.status ?? ''))
-            .map((entry) => entry.id)
+          .filter((entry) => READY_TRANSCRIPT_STATUSES.has(entry.status ?? ''))
+          .map((entry) => entry.id)
         : [],
     [skillsMatchingEnabled, transcripts],
   );
@@ -417,12 +418,12 @@ export default function HomePage() {
     () =>
       skillsMatchingEnabled
         ? transcripts
-            .filter(
-              (entry) =>
-                !entry.status ||
-                ['CREATED', 'UPLOADED', 'PARSING'].includes(entry.status),
-            )
-            .map((entry) => entry.id)
+          .filter(
+            (entry) =>
+              !entry.status ||
+              ['CREATED', 'UPLOADED', 'PARSING'].includes(entry.status),
+          )
+          .map((entry) => entry.id)
         : [],
     [skillsMatchingEnabled, transcripts],
   );
@@ -502,8 +503,8 @@ export default function HomePage() {
   }, [addressDetails.state]);
   const stateActiveId =
     stateSuggestionsOpen &&
-    stateHighlightIndex >= 0 &&
-    stateHighlightIndex < stateSuggestions.length
+      stateHighlightIndex >= 0 &&
+      stateHighlightIndex < stateSuggestions.length
       ? `${stateListboxId}-option-${stateSuggestions[stateHighlightIndex].code}`
       : undefined;
   const socActiveId =
@@ -786,22 +787,9 @@ export default function HomePage() {
     updateFocusOnetParam(null);
   };
 
-  const formatMatchPercent = (value: number) => {
-    const bounded = Math.min(Math.max(value, 0), 1);
-    return `${(bounded * 100).toFixed(2)}%`;
-  };
-
-  const formatHourlyPreview = (value: string | null) => {
-    if (!value) return '—';
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return value;
-    return `$${hourlyFormatter.format(parsed)}`;
-  };
-
-  const formatAnnualPreview = (value: number | null) => {
-    if (value === null || value === undefined) return '—';
-    return `$${annualFormatter.format(value)}`;
-  };
+  // formatMatchPercent, formatHourlyPreview, formatAnnualPreview now imported from ./helpers/formatters
+  const formatHourly = (value: string | null) => formatHourlyPreview(value, hourlyFormatter);
+  const formatAnnual = (value: number | null) => formatAnnualPreview(value, annualFormatter);
 
   const applyParsedAddress = (parsed: ParsedAddress) => {
     setAddressDetails(buildAddressFieldsFromParsed(parsed));
@@ -1325,8 +1313,8 @@ export default function HomePage() {
         );
         const usedPath =
           processData?.usedPath === 'pdf_text' ||
-          processData?.usedPath === 'ocr' ||
-          processData?.usedPath === 'multimodal'
+            processData?.usedPath === 'ocr' ||
+            processData?.usedPath === 'multimodal'
             ? processData.usedPath
             : null;
         const courseCount = processData?.courseCount ?? 0;
@@ -1810,7 +1798,7 @@ export default function HomePage() {
                     <button
                       className={styles.chipButton}
                       type="button"
-                    onClick={() => resendWithOverride(entry)}
+                      onClick={() => resendWithOverride(entry)}
                     >
                       Use
                     </button>
@@ -1858,7 +1846,7 @@ export default function HomePage() {
                             <button
                               className={styles.chipButton}
                               type="button"
-                          onClick={() => resendWithOverride(entry)}
+                              onClick={() => resendWithOverride(entry)}
                             >
                               Use
                             </button>
@@ -2297,13 +2285,13 @@ export default function HomePage() {
                                     const isActive = index === stateHighlightIndex;
                                     return (
                                       <li key={entry.code}>
-                                    <button
-                                      type="button"
-                                      className={`${styles.suggestionItem} ${isActive ? styles.suggestionItemActive : ''}`}
-                                      id={`${stateListboxId}-option-${entry.code}`}
-                                      onMouseDown={(event) => {
-                                        event.preventDefault();
-                                        handleStateSelect(entry.code);
+                                        <button
+                                          type="button"
+                                          className={`${styles.suggestionItem} ${isActive ? styles.suggestionItemActive : ''}`}
+                                          id={`${stateListboxId}-option-${entry.code}`}
+                                          onMouseDown={(event) => {
+                                            event.preventDefault();
+                                            handleStateSelect(entry.code);
                                           }}
                                           onMouseEnter={() => setStateHighlightIndex(index)}
                                           role="option"
@@ -2425,332 +2413,482 @@ export default function HomePage() {
                     </div>
                   ) : null}
                 </div>
-              {socSuffixMatch ? (
-                <span className={styles.hintStrong} data-testid="soc-suffix-note">
-                  Using {socSuffixMatch[1]} for wages (O*NET suffix .{socSuffixMatch[2]} ignored).
-                  {' '}
-                  Tasks keep the O*NET {socSuffixMatch[1]}.{socSuffixMatch[2]} suffix.
-                </span>
-              ) : null}
-            </label>
+                {socSuffixMatch ? (
+                  <span className={styles.hintStrong} data-testid="soc-suffix-note">
+                    Using {socSuffixMatch[1]} for wages (O*NET suffix .{socSuffixMatch[2]} ignored).
+                    {' '}
+                    Tasks keep the O*NET {socSuffixMatch[1]}.{socSuffixMatch[2]} suffix.
+                  </span>
+                ) : null}
+              </label>
 
-            {recommendPanelEnabled ? (
-              recommendOpen ? (
-                <div className={`${styles.recommenderPanel} ${styles.formSpan}`} data-testid="soc-recommender">
-                  <div className={styles.recommenderHeader}>
-                    <div>
-                      <div className={styles.recommenderHeading}>
-                        <span className={styles.recommenderHeadingTitle}>Recommend O*NET codes</span>
-                        <span className={styles.recommenderTag}>Top 6</span>
-                      </div>
-                      <div className={styles.helper}>
-                        {skillsMatchingEnabled
-                          ? 'Paste job duties and/or upload a transcript to get Top 6 O*NET codes.'
-                          : 'Paste job duties to get Top 6 O*NET codes.'}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className={styles.ghostButton}
-                      onClick={() => setRecommendOpen(false)}
-                    >
-                      Hide
-                    </button>
-                  </div>
-                  <textarea
-                    id="soc-recommender-input"
-                    className={`${styles.textarea} ${styles.recommenderTextarea}`}
-                    rows={4}
-                    value={dutiesInput}
-                    onChange={(event) => setDutiesInput(event.target.value)}
-                    placeholder="Paste job duties here"
-                    data-testid="soc-recommender-input"
-                  />
-                  {skillsMatchingEnabled ? (
-                    <div className={styles.transcriptUpload} data-testid="transcript-upload">
-                      <div className={styles.transcriptUploadRow}>
-                        <label className={styles.transcriptUploadLabel}>
-                          Transcript PDF
-                          <input
-                            type="file"
-                            accept="application/pdf"
-                            className={styles.transcriptUploadInput}
-                            multiple
-                            ref={transcriptInputRef}
-                            onChange={handleTranscriptFileChange}
-                            disabled={transcriptUploading}
-                          />
-                        </label>
-                      </div>
-                      {transcriptFiles.length ? (
-                        <div className={styles.transcriptSelection}>
-                          <span>Selected {transcriptFiles.length} file(s):</span>
-                          <ul className={styles.transcriptFileList}>
-                            {transcriptFiles.map((file) => (
-                              <li key={`${file.name}-${file.size}`} className={styles.transcriptFileItem}>
-                                {file.name}
-                              </li>
-                            ))}
-                          </ul>
+              {recommendPanelEnabled ? (
+                recommendOpen ? (
+                  <div className={`${styles.recommenderPanel} ${styles.formSpan}`} data-testid="soc-recommender">
+                    <div className={styles.recommenderHeader}>
+                      <div>
+                        <div className={styles.recommenderHeading}>
+                          <span className={styles.recommenderHeadingTitle}>Recommend O*NET codes</span>
+                          <span className={styles.recommenderTag}>Top 6</span>
                         </div>
-                      ) : null}
-                      <div className={styles.transcriptStatusRow}>
-                        <span className={styles.transcriptStatusLabel}>Transcript status:</span>
-                        <span>
-                          {hasAnyTranscript
-                            ? `${readyTranscriptIds.length}/${transcriptStatusTotal} parsed`
-                            : 'not uploaded'}
-                        </span>
+                        <div className={styles.helper}>
+                          {skillsMatchingEnabled
+                            ? 'Paste job duties and/or upload a transcript to get Top 6 O*NET codes.'
+                            : 'Paste job duties to get Top 6 O*NET codes.'}
+                        </div>
                       </div>
-                      {transcripts.length ? (
-                        <div className={styles.transcriptList}>
-                          {transcripts.map((entry) => {
-                            const isPending =
-                              !entry.status ||
-                              ['CREATED', 'UPLOADED', 'PARSING'].includes(entry.status);
-                            const isScoring = Boolean(entry.scoreStartedAt && !entry.scoreEndedAt);
-                            const statusLabel = entry.status
-                              ? entry.status.replace(/_/g, ' ')
-                              : 'pending';
-                            const displayStatus = isScoring ? 'scoring' : statusLabel;
-                            const etaLabel = getTranscriptEta(entry);
-                            const queueIndex = pendingQueueIds.indexOf(entry.id);
-                            const queueLabel =
-                              queueIndex >= 0 && pendingQueueIds.length > 1
-                                ? `Queue position: ${queueIndex + 1}/${pendingQueueIds.length}`
-                                : null;
-                            return (
-                            <div key={entry.id} className={styles.transcriptCard}>
-                              <div className={styles.transcriptCardHeader}>
-                                <span className={styles.transcriptCardName}>
-                                  {entry.name ?? `Transcript ${entry.id.slice(0, 8)}`}
-                                </span>
-                                <span
-                                  className={`${styles.transcriptCardStatus} ${
-                                    isPending || isScoring ? styles.transcriptCardStatusPending : ''
-                                  }`}
-                                >
-                                  {displayStatus}
-                                  {isPending || isScoring ? (
-                                    <span className={styles.transcriptStatusDot} aria-hidden />
-                                  ) : null}
-                                </span>
-                              </div>
-                              {entry.message ? (
-                                <div className={styles.transcriptCardMeta}>{entry.message}</div>
-                              ) : null}
-                              {entry.error ? (
-                                <div className={styles.error}>{entry.error}</div>
-                              ) : null}
-                              {isPending ? (
-                                <div className={styles.transcriptPendingHint}>
-                                  Processing<span className={styles.transcriptDots} />
-                                </div>
-                              ) : isScoring ? (
-                                <div className={styles.transcriptPendingHint}>
-                                  Computing skills<span className={styles.transcriptDots} />
-                                </div>
-                              ) : null}
-                              {isPending || isScoring ? (
-                                <div className={styles.transcriptProgress} aria-hidden="true" />
-                              ) : null}
-                              <div className={styles.transcriptStages}>
-                                {TRANSCRIPT_STAGE_LABELS.map((stage) => {
-                                  const stageStatus = getStageStatus(entry, stage.key);
-                                  const stageClass =
-                                    stageStatus === 'done'
-                                      ? styles.transcriptStageDone
-                                      : stageStatus === 'active'
-                                        ? styles.transcriptStageActive
-                                        : stageStatus === 'skipped'
-                                          ? styles.transcriptStageSkipped
-                                          : stageStatus === 'failed'
-                                            ? styles.transcriptStageFailed
-                                            : styles.transcriptStagePending;
-                                  return (
-                                    <div
-                                      key={stage.key}
-                                      className={`${styles.transcriptStage} ${stageClass}`}
+                      <button
+                        type="button"
+                        className={styles.ghostButton}
+                        onClick={() => setRecommendOpen(false)}
+                      >
+                        Hide
+                      </button>
+                    </div>
+                    <textarea
+                      id="soc-recommender-input"
+                      className={`${styles.textarea} ${styles.recommenderTextarea}`}
+                      rows={4}
+                      value={dutiesInput}
+                      onChange={(event) => setDutiesInput(event.target.value)}
+                      placeholder="Paste job duties here"
+                      data-testid="soc-recommender-input"
+                    />
+                    {skillsMatchingEnabled ? (
+                      <div className={styles.transcriptUpload} data-testid="transcript-upload">
+                        <div className={styles.transcriptUploadRow}>
+                          <label className={styles.transcriptUploadLabel}>
+                            Transcript PDF
+                            <input
+                              type="file"
+                              accept="application/pdf"
+                              className={styles.transcriptUploadInput}
+                              multiple
+                              ref={transcriptInputRef}
+                              onChange={handleTranscriptFileChange}
+                              disabled={transcriptUploading}
+                            />
+                          </label>
+                        </div>
+                        {transcriptFiles.length ? (
+                          <div className={styles.transcriptSelection}>
+                            <span>Selected {transcriptFiles.length} file(s):</span>
+                            <ul className={styles.transcriptFileList}>
+                              {transcriptFiles.map((file) => (
+                                <li key={`${file.name}-${file.size}`} className={styles.transcriptFileItem}>
+                                  {file.name}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        <div className={styles.transcriptStatusRow}>
+                          <span className={styles.transcriptStatusLabel}>Transcript status:</span>
+                          <span>
+                            {hasAnyTranscript
+                              ? `${readyTranscriptIds.length}/${transcriptStatusTotal} parsed`
+                              : 'not uploaded'}
+                          </span>
+                        </div>
+                        {transcripts.length ? (
+                          <div className={styles.transcriptList}>
+                            {transcripts.map((entry) => {
+                              const isPending =
+                                !entry.status ||
+                                ['CREATED', 'UPLOADED', 'PARSING'].includes(entry.status);
+                              const isScoring = Boolean(entry.scoreStartedAt && !entry.scoreEndedAt);
+                              const statusLabel = entry.status
+                                ? entry.status.replace(/_/g, ' ')
+                                : 'pending';
+                              const displayStatus = isScoring ? 'scoring' : statusLabel;
+                              const etaLabel = getTranscriptEta(entry);
+                              const queueIndex = pendingQueueIds.indexOf(entry.id);
+                              const queueLabel =
+                                queueIndex >= 0 && pendingQueueIds.length > 1
+                                  ? `Queue position: ${queueIndex + 1}/${pendingQueueIds.length}`
+                                  : null;
+                              return (
+                                <div key={entry.id} className={styles.transcriptCard}>
+                                  <div className={styles.transcriptCardHeader}>
+                                    <span className={styles.transcriptCardName}>
+                                      {entry.name ?? `Transcript ${entry.id.slice(0, 8)}`}
+                                    </span>
+                                    <span
+                                      className={`${styles.transcriptCardStatus} ${isPending || isScoring ? styles.transcriptCardStatusPending : ''
+                                        }`}
                                     >
-                                      <span className={styles.transcriptStageDot} aria-hidden />
-                                      <span>{stage.label}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {etaLabel ? (
-                                <div className={styles.transcriptEta}>{etaLabel}</div>
-                              ) : null}
-                              {queueLabel ? (
-                                <div className={styles.transcriptQueue}>{queueLabel}</div>
-                              ) : null}
-                              {entry.scoreDebug ? (
-                                <details className={styles.transcriptDebug}>
-                                  <summary>Skill scoring debug</summary>
-                                  <div className={styles.transcriptDebugSummary}>
-                                    Courses: {entry.scoreDebug.totalCourses} total ·{' '}
-                                    {entry.scoreDebug.eligibleCourses} eligible ·{' '}
-                                    {entry.scoreDebug.scoredCourses} embedded · Evidence:{' '}
-                                    {entry.scoreEvidenceCount ?? 0}
+                                      {displayStatus}
+                                      {isPending || isScoring ? (
+                                        <span className={styles.transcriptStatusDot} aria-hidden />
+                                      ) : null}
+                                    </span>
                                   </div>
-                                  <div className={styles.transcriptDebugList}>
-                                    {entry.scoreDebug.courses.map((course) => {
-                                      const reason = formatDebugReason(course.reason);
-                                      const statusLabel =
-                                        course.status === 'matched'
-                                          ? `matched (${course.matchCount ?? 0})`
-                                          : course.status.replace('_', ' ');
-                                      const thresholdLabel =
-                                        course.thresholdUsed && course.thresholdUsed !== 'none'
-                                          ? ` • ${course.thresholdUsed}`
-                                          : '';
-                                      const detailParts = [
-                                        statusLabel + thresholdLabel,
-                                        reason,
-                                      ].filter(Boolean);
-                                      const topSkill = course.topSkill
-                                        ? `Top skill: ${course.topSkill.name} (${course.topSkill.taxonomyType})`
-                                        : 'Top skill: —';
+                                  {entry.message ? (
+                                    <div className={styles.transcriptCardMeta}>{entry.message}</div>
+                                  ) : null}
+                                  {entry.error ? (
+                                    <div className={styles.error}>{entry.error}</div>
+                                  ) : null}
+                                  {isPending ? (
+                                    <div className={styles.transcriptPendingHint}>
+                                      Processing<span className={styles.transcriptDots} />
+                                    </div>
+                                  ) : isScoring ? (
+                                    <div className={styles.transcriptPendingHint}>
+                                      Computing skills<span className={styles.transcriptDots} />
+                                    </div>
+                                  ) : null}
+                                  {isPending || isScoring ? (
+                                    <div className={styles.transcriptProgress} aria-hidden="true" />
+                                  ) : null}
+                                  <div className={styles.transcriptStages}>
+                                    {TRANSCRIPT_STAGE_LABELS.map((stage) => {
+                                      const stageStatus = getStageStatus(entry, stage.key);
+                                      const stageClass =
+                                        stageStatus === 'done'
+                                          ? styles.transcriptStageDone
+                                          : stageStatus === 'active'
+                                            ? styles.transcriptStageActive
+                                            : stageStatus === 'skipped'
+                                              ? styles.transcriptStageSkipped
+                                              : stageStatus === 'failed'
+                                                ? styles.transcriptStageFailed
+                                                : styles.transcriptStagePending;
                                       return (
                                         <div
-                                          key={`${entry.id}-${course.courseKey}`}
-                                          className={styles.transcriptDebugItem}
+                                          key={stage.key}
+                                          className={`${styles.transcriptStage} ${stageClass}`}
                                         >
-                                          <div className={styles.transcriptDebugTitle}>
-                                            {course.title}
-                                          </div>
-                                          <div className={styles.transcriptDebugMeta}>
-                                            {detailParts.join(' • ')}
-                                          </div>
-                                          <div className={styles.transcriptDebugMeta}>
-                                            Max score: {formatDebugScore(course.maxScore)} •{' '}
-                                            {topSkill}
-                                          </div>
+                                          <span className={styles.transcriptStageDot} aria-hidden />
+                                          <span>{stage.label}</span>
                                         </div>
                                       );
                                     })}
                                   </div>
-                                </details>
-                              ) : null}
-                              {entry.status === 'READY' || entry.status === 'NEEDS_REVIEW' ? (
-                                <Link className={styles.transcriptLink} href={`/transcripts/${entry.id}`}>
-                                  Review transcript
-                                </Link>
-                              ) : (
-                                <span className={styles.transcriptPending}>
-                                  Review available after parsing
-                                </span>
-                              )}
-                            </div>
-                          );
-                          })}
-                        </div>
-                      ) : null}
-                      {transcriptError ? (
-                        <div className={styles.error}>{transcriptError}</div>
-                      ) : null}
-                      {transcriptMessage ? (
-                        <div className={styles.success}>{transcriptMessage}</div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  <div className={styles.recommenderActions}>
-                    <button
-                      type="button"
-                      className={`${styles.primaryButton} ${styles.recommenderAction}`}
-                      onClick={handleRecommendSubmit}
-                      disabled={recommendDisabled}
-                      data-testid="soc-recommender-submit"
-                    >
-                      {recommendLoading ? 'Matching...' : 'Recommend Top 6 O*NET Codes'}
-                    </button>
-                    {recommendDisabledReason ? (
-                      <div className={styles.recommenderHint}>{recommendDisabledReason}</div>
+                                  {etaLabel ? (
+                                    <div className={styles.transcriptEta}>{etaLabel}</div>
+                                  ) : null}
+                                  {queueLabel ? (
+                                    <div className={styles.transcriptQueue}>{queueLabel}</div>
+                                  ) : null}
+                                  {entry.scoreDebug ? (
+                                    <details className={styles.transcriptDebug}>
+                                      <summary>Skill scoring debug</summary>
+                                      <div className={styles.transcriptDebugSummary}>
+                                        Courses: {entry.scoreDebug.totalCourses} total ·{' '}
+                                        {entry.scoreDebug.eligibleCourses} eligible ·{' '}
+                                        {entry.scoreDebug.scoredCourses} embedded · Evidence:{' '}
+                                        {entry.scoreEvidenceCount ?? 0}
+                                      </div>
+                                      <div className={styles.transcriptDebugList}>
+                                        {entry.scoreDebug.courses.map((course) => {
+                                          const reason = formatDebugReason(course.reason);
+                                          const statusLabel =
+                                            course.status === 'matched'
+                                              ? `matched (${course.matchCount ?? 0})`
+                                              : course.status.replace('_', ' ');
+                                          const thresholdLabel =
+                                            course.thresholdUsed && course.thresholdUsed !== 'none'
+                                              ? ` • ${course.thresholdUsed}`
+                                              : '';
+                                          const detailParts = [
+                                            statusLabel + thresholdLabel,
+                                            reason,
+                                          ].filter(Boolean);
+                                          const topSkill = course.topSkill
+                                            ? `Top skill: ${course.topSkill.name} (${course.topSkill.taxonomyType})`
+                                            : 'Top skill: —';
+                                          return (
+                                            <div
+                                              key={`${entry.id}-${course.courseKey}`}
+                                              className={styles.transcriptDebugItem}
+                                            >
+                                              <div className={styles.transcriptDebugTitle}>
+                                                {course.title}
+                                              </div>
+                                              <div className={styles.transcriptDebugMeta}>
+                                                {detailParts.join(' • ')}
+                                              </div>
+                                              <div className={styles.transcriptDebugMeta}>
+                                                Max score: {formatDebugScore(course.maxScore)} •{' '}
+                                                {topSkill}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </details>
+                                  ) : null}
+                                  {entry.status === 'READY' || entry.status === 'NEEDS_REVIEW' ? (
+                                    <Link className={styles.transcriptLink} href={`/transcripts/${entry.id}`}>
+                                      Review transcript
+                                    </Link>
+                                  ) : (
+                                    <span className={styles.transcriptPending}>
+                                      Review available after parsing
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                        {transcriptError ? (
+                          <div className={styles.error}>{transcriptError}</div>
+                        ) : null}
+                        {transcriptMessage ? (
+                          <div className={styles.success}>{transcriptMessage}</div>
+                        ) : null}
+                      </div>
                     ) : null}
-                  </div>
-                  {recommendError ? (
-                    <div className={styles.error} data-testid="soc-recommender-error">
-                      {recommendError}
-                    </div>
-                  ) : null}
-                  {recommendWarnings.length ? (
-                    <div className={styles.warning} data-testid="soc-recommender-warnings">
-                      {recommendWarnings.join(' ')}
-                    </div>
-                  ) : null}
-                  {recommendMeta?.inputTruncated ? (
-                    <div className={styles.warning} data-testid="soc-recommender-truncated">
-                      Duties were truncated for matching.
-                    </div>
-                  ) : null}
-                  {recommendSelected ? (
-                    <div className={styles.recommenderBanner} data-testid="soc-recommend-banner">
-                      <span>
-                        Selected O*NET:{' '}
-                        <strong>{recommendSelected.code}</strong>
-                        {recommendSelected.title ? ` — ${recommendSelected.title}` : ''}
-                      </span>
+                    <div className={styles.recommenderActions}>
                       <button
                         type="button"
-                        className={styles.ghostButton}
-                        onClick={() => clearRecommendSelection()}
+                        className={`${styles.primaryButton} ${styles.recommenderAction}`}
+                        onClick={handleRecommendSubmit}
+                        disabled={recommendDisabled}
+                        data-testid="soc-recommender-submit"
                       >
-                        Clear
+                        {recommendLoading ? 'Matching...' : 'Recommend Top 6 O*NET Codes'}
                       </button>
+                      {recommendDisabledReason ? (
+                        <div className={styles.recommenderHint}>{recommendDisabledReason}</div>
+                      ) : null}
                     </div>
-                  ) : null}
-                  {recommendMode === 'combined' ? (
-                    combinedResults.length ? (
-                      <div className={styles.recommenderGrid} data-testid="soc-combined-list">
-                        {combinedResults.map((item) => {
-                          const isSelected = recommendSelected?.code === item.onet_code;
-                          const title = item.onet_title ?? 'Unknown title';
-                          const duties = item.duties ?? [];
-                          const dutiesCount =
-                            typeof item.duties_count === 'number'
-                              ? item.duties_count
-                              : duties.length;
-                          const dutiesAvailable =
-                            typeof item.duties_available === 'boolean'
-                              ? item.duties_available
-                              : dutiesCount > 0;
-                          const hasMoreDuties = dutiesAvailable && dutiesCount > previewCount;
-                          const isExpanded =
-                            !hasMoreDuties || recommendExpanded === item.onet_code;
-                          const showDutiesList = !isMobile || isExpanded;
-                          const dutiesToShow = isExpanded
-                            ? duties
-                            : duties.slice(0, previewCount);
-                          const remainingDuties = Math.max(dutiesCount - previewCount, 0);
-                          return (
-                            <div
-                              key={item.onet_code}
-                              className={styles.recommenderCard}
-                              data-testid="soc-combined-card"
-                            >
-                              <div className={styles.recommenderCardHeader}>
-                                <div>
-                                  <div className={styles.recommenderCode}>{item.onet_code}</div>
-                                  <div className={styles.recommenderTitle}>{title}</div>
-                                  {item.job_zone ? (
-                                    <div className={styles.recommenderJobZone}>
-                                      <span className={styles.jobZoneBadge}>
-                                        Job Zone {item.job_zone}
-                                      </span>
-                                    </div>
-                                  ) : null}
-                                  {item.skills_gate ? (
-                                    <div className={styles.recommenderJobZone}>
-                                      <span
-                                        className={`${styles.skillsGateBadge} ${
-                                          item.skills_gate === 'pass'
+                    {recommendError ? (
+                      <div className={styles.error} data-testid="soc-recommender-error">
+                        {recommendError}
+                      </div>
+                    ) : null}
+                    {recommendWarnings.length ? (
+                      <div className={styles.warning} data-testid="soc-recommender-warnings">
+                        {recommendWarnings.join(' ')}
+                      </div>
+                    ) : null}
+                    {recommendMeta?.inputTruncated ? (
+                      <div className={styles.warning} data-testid="soc-recommender-truncated">
+                        Duties were truncated for matching.
+                      </div>
+                    ) : null}
+                    {recommendSelected ? (
+                      <div className={styles.recommenderBanner} data-testid="soc-recommend-banner">
+                        <span>
+                          Selected O*NET:{' '}
+                          <strong>{recommendSelected.code}</strong>
+                          {recommendSelected.title ? ` — ${recommendSelected.title}` : ''}
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.ghostButton}
+                          onClick={() => clearRecommendSelection()}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    ) : null}
+                    {recommendMode === 'combined' ? (
+                      combinedResults.length ? (
+                        <div className={styles.recommenderGrid} data-testid="soc-combined-list">
+                          {combinedResults.map((item) => {
+                            const isSelected = recommendSelected?.code === item.onet_code;
+                            const title = item.onet_title ?? 'Unknown title';
+                            const duties = item.duties ?? [];
+                            const dutiesCount =
+                              typeof item.duties_count === 'number'
+                                ? item.duties_count
+                                : duties.length;
+                            const dutiesAvailable =
+                              typeof item.duties_available === 'boolean'
+                                ? item.duties_available
+                                : dutiesCount > 0;
+                            const hasMoreDuties = dutiesAvailable && dutiesCount > previewCount;
+                            const isExpanded =
+                              !hasMoreDuties || recommendExpanded === item.onet_code;
+                            const showDutiesList = !isMobile || isExpanded;
+                            const dutiesToShow = isExpanded
+                              ? duties
+                              : duties.slice(0, previewCount);
+                            const remainingDuties = Math.max(dutiesCount - previewCount, 0);
+                            return (
+                              <div
+                                key={item.onet_code}
+                                className={styles.recommenderCard}
+                                data-testid="soc-combined-card"
+                              >
+                                <div className={styles.recommenderCardHeader}>
+                                  <div>
+                                    <div className={styles.recommenderCode}>{item.onet_code}</div>
+                                    <div className={styles.recommenderTitle}>{title}</div>
+                                    {item.job_zone ? (
+                                      <div className={styles.recommenderJobZone}>
+                                        <span className={styles.jobZoneBadge}>
+                                          Job Zone {item.job_zone}
+                                        </span>
+                                      </div>
+                                    ) : null}
+                                    {item.skills_gate ? (
+                                      <div className={styles.recommenderJobZone}>
+                                        <span
+                                          className={`${styles.skillsGateBadge} ${item.skills_gate === 'pass'
                                             ? styles.skillsGatePass
                                             : item.skills_gate === 'fail'
                                               ? styles.skillsGateFail
                                               : styles.skillsGateSkipped
-                                        }`}
+                                            }`}
+                                        >
+                                          Skills {item.skills_gate}
+                                        </span>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  {isSelected ? (
+                                    <span className={styles.recommenderSelected}>✓ Selected</span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className={`${styles.primaryButton} ${styles.recommenderSelect}`}
+                                      onClick={() => {
+                                        selectRecommendedOnet(item.onet_code, item.onet_title ?? null);
+                                      }}
+                                    >
+                                      Select
+                                    </button>
+                                  )}
+                                </div>
+                                <div className={styles.recommenderMetaRow}>
+                                  <span className={styles.recommenderMetaItem}>
+                                    Rank #{item.final_rank} · {item.source}
+                                  </span>
+                                  {item.duties_rank !== undefined && item.duties_rank !== null ? (
+                                    <span className={styles.recommenderMetaItem}>
+                                      Duties rank: {item.duties_rank}
+                                    </span>
+                                  ) : null}
+                                  {item.skills_rank !== undefined && item.skills_rank !== null ? (
+                                    <span className={styles.recommenderMetaItem}>
+                                      Skills rank: {item.skills_rank}
+                                    </span>
+                                  ) : null}
+                                  {item.rrf_score !== undefined ? (
+                                    <span className={styles.recommenderMetaItem}>
+                                      Fusion: {item.rrf_score.toFixed(3)}
+                                    </span>
+                                  ) : null}
+                                  {item.similarity !== undefined ? (
+                                    <span className={styles.recommenderMetaItem}>
+                                      Similarity: {formatMatchPercent(item.similarity)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {item.skills_evidence ? (
+                                  <details className={styles.recommenderSkillsEvidence}>
+                                    <summary>
+                                      Skills matched: {item.skills_evidence.course_count} courses
+                                    </summary>
+                                    {item.skills_evidence.top_matches?.length ? (
+                                      <ul className={styles.recommenderSkillsList}>
+                                        {item.skills_evidence.top_matches.map((match, idx) => (
+                                          <li
+                                            key={`${item.onet_code}-skill-${idx}`}
+                                            className={styles.recommenderSkillsItem}
+                                          >
+                                            {match.course_title} — {match.skill_name} ({match.taxonomy_type})
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <div className={styles.recommenderCollapsed}>
+                                        No skill matches found.
+                                      </div>
+                                    )}
+                                  </details>
+                                ) : null}
+                                <div className={styles.recommenderDuties}>
+                                  {dutiesAvailable ? (
+                                    showDutiesList ? (
+                                      <ul
+                                        className={`${styles.recommenderDutiesList} ${isExpanded ? styles.recommenderDutiesExpanded : styles.recommenderDutiesCollapsed}`}
+                                        data-testid="soc-combined-duties"
                                       >
-                                        Skills {item.skills_gate}
+                                        {dutiesToShow.map((duty, idx) => (
+                                          <li
+                                            key={`${item.onet_code}-${idx}`}
+                                            className={`${styles.recommenderDutyItem} ${isExpanded ? styles.recommenderDutyExpanded : styles.recommenderDutyCollapsed}`}
+                                          >
+                                            {duty}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <div className={styles.recommenderCollapsed}>
+                                        Duties available ({dutiesCount})
+                                      </div>
+                                    )
+                                  ) : (
+                                    <div className={styles.recommenderCollapsed}>No duties available.</div>
+                                  )}
+                                  {dutiesAvailable && hasMoreDuties ? (
+                                    <button
+                                      type="button"
+                                      className={`${styles.secondaryButton} ${styles.recommenderToggle}`}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setRecommendExpanded((prev) =>
+                                          prev === item.onet_code ? null : item.onet_code,
+                                        );
+                                      }}
+                                    >
+                                      {isExpanded
+                                        ? 'Hide duties'
+                                        : `Show ${remainingDuties} more duties`}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : !recommendLoading && (dutiesInput.trim() || hasAnyTranscript) ? (
+                        <div className={styles.recommenderEmpty} data-testid="soc-combined-empty">
+                          No recommendations yet. Click “Recommend O*NET Codes” to search.
+                        </div>
+                      ) : null
+                    ) : recommendations.length ? (
+                      <div className={styles.recommenderGrid} data-testid="soc-recommend-list">
+                        {recommendations.map((item) => {
+                          const title = item.matchedOnetTitle ?? item.socTitle ?? 'Unknown title';
+                          const hasMoreDuties =
+                            item.dutiesAvailable && item.dutiesCount > previewCount;
+                          const isExpanded =
+                            !hasMoreDuties || recommendExpanded === item.matchedOnetCode;
+                          const showDutiesList = !isMobile || isExpanded;
+                          const dutiesToShow = isExpanded
+                            ? item.duties
+                            : item.duties.slice(0, previewCount);
+                          const remainingDuties = Math.max(item.dutiesCount - previewCount, 0);
+                          const isSelected = recommendSelected?.code === item.matchedOnetCode;
+                          const confidenceValue =
+                            item.confidence ?? item.similarity;
+                          const wagePreview = item.wageAvailable
+                            ? `${formatHourly(item.wageLevel1Hourly)} / hr | ${formatAnnual(
+                              item.wageLevel1Annual,
+                            )} / yr`
+                            : 'No wage available';
+                          return (
+                            <div
+                              key={item.matchedOnetCode}
+                              className={styles.recommenderCard}
+                              data-testid="soc-recommend-card"
+                              data-onet-code={item.matchedOnetCode}
+                            >
+                              <div className={styles.recommenderCardHeader}>
+                                <div>
+                                  <div className={styles.recommenderCode}>{item.matchedOnetCode}</div>
+                                  <div className={styles.recommenderTitle}>{title}</div>
+                                  {item.jobZone ? (
+                                    <div className={styles.recommenderJobZone}>
+                                      <span className={styles.jobZoneBadge}>
+                                        Job Zone {item.jobZone}
                                       </span>
                                     </div>
                                   ) : null}
@@ -2761,72 +2899,44 @@ export default function HomePage() {
                                   <button
                                     type="button"
                                     className={`${styles.primaryButton} ${styles.recommenderSelect}`}
+                                    data-testid="soc-recommend-select"
                                     onClick={() => {
-                                      selectRecommendedOnet(item.onet_code, item.onet_title ?? null);
+                                      handleRecommendSelect(item);
                                     }}
                                   >
                                     Select
                                   </button>
                                 )}
                               </div>
-                              <div className={styles.recommenderMetaRow}>
-                                <span className={styles.recommenderMetaItem}>
-                                  Rank #{item.final_rank} · {item.source}
-                                </span>
-                                {item.duties_rank !== undefined && item.duties_rank !== null ? (
-                                  <span className={styles.recommenderMetaItem}>
-                                    Duties rank: {item.duties_rank}
-                                  </span>
-                                ) : null}
-                                {item.skills_rank !== undefined && item.skills_rank !== null ? (
-                                  <span className={styles.recommenderMetaItem}>
-                                    Skills rank: {item.skills_rank}
-                                  </span>
-                                ) : null}
-                                {item.rrf_score !== undefined ? (
-                                  <span className={styles.recommenderMetaItem}>
-                                    Fusion: {item.rrf_score.toFixed(3)}
-                                  </span>
-                                ) : null}
-                                {item.similarity !== undefined ? (
-                                  <span className={styles.recommenderMetaItem}>
-                                    Similarity: {formatMatchPercent(item.similarity)}
+                              <div className={styles.recommenderWage}>
+                                <div className={styles.recommenderWageText} data-testid="soc-recommend-wage">
+                                  <span className={styles.recommenderWageLabel}>Lv1 Prevailing Wage:</span>
+                                  <span className={styles.recommenderWageValue}>{wagePreview}</span>
+                                </div>
+                                {item.wageHasDataQualityIssue ? (
+                                  <span
+                                    className={styles.recommenderQuality}
+                                    data-testid="soc-recommend-quality"
+                                  >
+                                    Data quality flag
                                   </span>
                                 ) : null}
                               </div>
-                              {item.skills_evidence ? (
-                                <details className={styles.recommenderSkillsEvidence}>
-                                  <summary>
-                                    Skills matched: {item.skills_evidence.course_count} courses
-                                  </summary>
-                                  {item.skills_evidence.top_matches?.length ? (
-                                    <ul className={styles.recommenderSkillsList}>
-                                      {item.skills_evidence.top_matches.map((match, idx) => (
-                                        <li
-                                          key={`${item.onet_code}-skill-${idx}`}
-                                          className={styles.recommenderSkillsItem}
-                                        >
-                                          {match.course_title} — {match.skill_name} ({match.taxonomy_type})
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  ) : (
-                                    <div className={styles.recommenderCollapsed}>
-                                      No skill matches found.
-                                    </div>
-                                  )}
-                                </details>
-                              ) : null}
+                              <div className={styles.recommenderMetaRow}>
+                                <span className={styles.recommenderMetaItem}>
+                                  Confidence: {formatMatchPercent(confidenceValue)}
+                                </span>
+                              </div>
                               <div className={styles.recommenderDuties}>
-                                {dutiesAvailable ? (
+                                {item.dutiesAvailable ? (
                                   showDutiesList ? (
                                     <ul
                                       className={`${styles.recommenderDutiesList} ${isExpanded ? styles.recommenderDutiesExpanded : styles.recommenderDutiesCollapsed}`}
-                                      data-testid="soc-combined-duties"
+                                      data-testid="soc-recommend-duties"
                                     >
                                       {dutiesToShow.map((duty, idx) => (
                                         <li
-                                          key={`${item.onet_code}-${idx}`}
+                                          key={`${item.matchedOnetCode}-${idx}`}
                                           className={`${styles.recommenderDutyItem} ${isExpanded ? styles.recommenderDutyExpanded : styles.recommenderDutyCollapsed}`}
                                         >
                                           {duty}
@@ -2835,20 +2945,21 @@ export default function HomePage() {
                                     </ul>
                                   ) : (
                                     <div className={styles.recommenderCollapsed}>
-                                      Duties available ({dutiesCount})
+                                      Duties available ({item.dutiesCount})
                                     </div>
                                   )
                                 ) : (
                                   <div className={styles.recommenderCollapsed}>No duties available.</div>
                                 )}
-                                {dutiesAvailable && hasMoreDuties ? (
+                                {item.dutiesAvailable && hasMoreDuties ? (
                                   <button
                                     type="button"
                                     className={`${styles.secondaryButton} ${styles.recommenderToggle}`}
+                                    data-testid="soc-recommend-duties-toggle"
                                     onClick={(event) => {
                                       event.stopPropagation();
                                       setRecommendExpanded((prev) =>
-                                        prev === item.onet_code ? null : item.onet_code,
+                                        prev === item.matchedOnetCode ? null : item.matchedOnetCode,
                                       );
                                     }}
                                   >
@@ -2862,153 +2973,28 @@ export default function HomePage() {
                           );
                         })}
                       </div>
-                    ) : !recommendLoading && (dutiesInput.trim() || hasAnyTranscript) ? (
-                      <div className={styles.recommenderEmpty} data-testid="soc-combined-empty">
+                    ) : !recommendLoading && dutiesInput.trim() ? (
+                      <div className={styles.recommenderEmpty} data-testid="soc-recommend-empty">
                         No recommendations yet. Click “Recommend O*NET Codes” to search.
                       </div>
-                    ) : null
-                  ) : recommendations.length ? (
-                    <div className={styles.recommenderGrid} data-testid="soc-recommend-list">
-                      {recommendations.map((item) => {
-                        const title = item.matchedOnetTitle ?? item.socTitle ?? 'Unknown title';
-                        const hasMoreDuties =
-                          item.dutiesAvailable && item.dutiesCount > previewCount;
-                        const isExpanded =
-                          !hasMoreDuties || recommendExpanded === item.matchedOnetCode;
-                        const showDutiesList = !isMobile || isExpanded;
-                        const dutiesToShow = isExpanded
-                          ? item.duties
-                          : item.duties.slice(0, previewCount);
-                        const remainingDuties = Math.max(item.dutiesCount - previewCount, 0);
-                        const isSelected = recommendSelected?.code === item.matchedOnetCode;
-                        const confidenceValue =
-                          item.confidence ?? item.similarity;
-                        const wagePreview = item.wageAvailable
-                          ? `${formatHourlyPreview(item.wageLevel1Hourly)} / hr | ${formatAnnualPreview(
-                            item.wageLevel1Annual,
-                          )} / yr`
-                          : 'No wage available';
-                        return (
-                          <div
-                            key={item.matchedOnetCode}
-                            className={styles.recommenderCard}
-                            data-testid="soc-recommend-card"
-                            data-onet-code={item.matchedOnetCode}
-                          >
-                        <div className={styles.recommenderCardHeader}>
-                          <div>
-                            <div className={styles.recommenderCode}>{item.matchedOnetCode}</div>
-                            <div className={styles.recommenderTitle}>{title}</div>
-                            {item.jobZone ? (
-                              <div className={styles.recommenderJobZone}>
-                                <span className={styles.jobZoneBadge}>
-                                  Job Zone {item.jobZone}
-                                </span>
-                              </div>
-                            ) : null}
-                          </div>
-                          {isSelected ? (
-                            <span className={styles.recommenderSelected}>✓ Selected</span>
-                          ) : (
-                                <button
-                                  type="button"
-                                  className={`${styles.primaryButton} ${styles.recommenderSelect}`}
-                                  data-testid="soc-recommend-select"
-                                  onClick={() => {
-                                    handleRecommendSelect(item);
-                                  }}
-                                >
-                                  Select
-                                </button>
-                              )}
-                            </div>
-                            <div className={styles.recommenderWage}>
-                              <div className={styles.recommenderWageText} data-testid="soc-recommend-wage">
-                                <span className={styles.recommenderWageLabel}>Lv1 Prevailing Wage:</span>
-                                <span className={styles.recommenderWageValue}>{wagePreview}</span>
-                              </div>
-                              {item.wageHasDataQualityIssue ? (
-                                <span
-                                  className={styles.recommenderQuality}
-                                  data-testid="soc-recommend-quality"
-                                >
-                                  Data quality flag
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className={styles.recommenderMetaRow}>
-                              <span className={styles.recommenderMetaItem}>
-                                Confidence: {formatMatchPercent(confidenceValue)}
-                              </span>
-                            </div>
-                            <div className={styles.recommenderDuties}>
-                              {item.dutiesAvailable ? (
-                                showDutiesList ? (
-                                  <ul
-                                    className={`${styles.recommenderDutiesList} ${isExpanded ? styles.recommenderDutiesExpanded : styles.recommenderDutiesCollapsed}`}
-                                    data-testid="soc-recommend-duties"
-                                  >
-                                    {dutiesToShow.map((duty, idx) => (
-                                      <li
-                                        key={`${item.matchedOnetCode}-${idx}`}
-                                        className={`${styles.recommenderDutyItem} ${isExpanded ? styles.recommenderDutyExpanded : styles.recommenderDutyCollapsed}`}
-                                      >
-                                        {duty}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <div className={styles.recommenderCollapsed}>
-                                    Duties available ({item.dutiesCount})
-                                  </div>
-                                )
-                              ) : (
-                                <div className={styles.recommenderCollapsed}>No duties available.</div>
-                              )}
-                              {item.dutiesAvailable && hasMoreDuties ? (
-                                <button
-                                  type="button"
-                                  className={`${styles.secondaryButton} ${styles.recommenderToggle}`}
-                                  data-testid="soc-recommend-duties-toggle"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setRecommendExpanded((prev) =>
-                                      prev === item.matchedOnetCode ? null : item.matchedOnetCode,
-                                    );
-                                  }}
-                                >
-                                  {isExpanded
-                                    ? 'Hide duties'
-                                    : `Show ${remainingDuties} more duties`}
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : !recommendLoading && dutiesInput.trim() ? (
-                    <div className={styles.recommenderEmpty} data-testid="soc-recommend-empty">
-                      No recommendations yet. Click “Recommend O*NET Codes” to search.
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className={`${styles.recommenderPrompt} ${styles.formSpan}`}>
-                  <span className={styles.helper}>Need help choosing an O*NET code?</span>
-                  <button
-                    type="button"
-                    className={styles.ghostButton}
-                    onClick={() => setRecommendOpen(true)}
-                    data-testid="soc-recommender-toggle"
-                  >
-                    Recommend by duties or transcript
-                  </button>
-                </div>
-              )
-            ) : null}
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className={`${styles.recommenderPrompt} ${styles.formSpan}`}>
+                    <span className={styles.helper}>Need help choosing an O*NET code?</span>
+                    <button
+                      type="button"
+                      className={styles.ghostButton}
+                      onClick={() => setRecommendOpen(true)}
+                      data-testid="soc-recommender-toggle"
+                    >
+                      Recommend by duties or transcript
+                    </button>
+                  </div>
+                )
+              ) : null}
 
-            {detectedMode === 'address_soc' ? (
+              {detectedMode === 'address_soc' ? (
                 <div className={styles.inlineRow}>
                   <label className={styles.field}>
                     <span className={styles.label}>Proposed Salary</span>
