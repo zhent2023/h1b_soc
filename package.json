@@ -13,7 +13,7 @@
     "db:seed": "prisma db seed",
     "db:query": "tsx scripts/db/query.ts",
     "test": "EMBEDDING_PROVIDER=stub pnpm smoke:embedding && pnpm test:coverage && pnpm lint && pnpm vercel-build",
-    "test:coverage": "vitest run --coverage --no-file-parallelism",
+    "test:coverage": "VITEST_POOL=forks vitest run --coverage --no-file-parallelism",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration --passWithNoTests --no-file-parallelism",
     "typecheck": "tsc --noEmit",

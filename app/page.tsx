@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -999,11 +1000,11 @@ export default function HomePage() {
     });
   };
 
-  const updateTranscriptEntry = (id: string, patch: Partial<TranscriptEntry>) => {
+  const updateTranscriptEntry = useCallback((id: string, patch: Partial<TranscriptEntry>) => {
     setTranscripts((prev) =>
       prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
     );
-  };
+  }, [setTranscripts]);
 
   const getStageStatus = (
     entry: TranscriptEntry,
@@ -1104,7 +1105,7 @@ export default function HomePage() {
     return null;
   };
 
-  const refreshTranscriptStatus = async (id: string) => {
+  const refreshTranscriptStatus = useCallback(async (id: string) => {
     try {
       const res = await fetch(`/api/v1/transcripts/${id}`, { credentials: 'include' });
       const data = await res.json();
@@ -1114,7 +1115,7 @@ export default function HomePage() {
     } catch {
       updateTranscriptEntry(id, { status: null });
     }
-  };
+  }, [updateTranscriptEntry]);
 
   useEffect(() => {
     if (pendingTranscriptIds.length === 0) return;
@@ -1125,7 +1126,7 @@ export default function HomePage() {
       setTranscriptTick((prev) => prev + 1);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [pendingTranscriptIds.join('|')]);
+  }, [pendingTranscriptIds, refreshTranscriptStatus]);
 
   const handleTranscriptFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -1322,15 +1323,22 @@ export default function HomePage() {
             credentials: 'include',
           },
         );
+        const usedPath =
+          processData?.usedPath === 'pdf_text' ||
+          processData?.usedPath === 'ocr' ||
+          processData?.usedPath === 'multimodal'
+            ? processData.usedPath
+            : null;
+        const courseCount = processData?.courseCount ?? 0;
 
         await refreshTranscriptStatus(transcriptId);
         updateTranscriptEntry(transcriptId, {
-          message: `Parsing complete${processData?.usedPath === 'ocr' ? ' (OCR)' : ''}. Courses detected: ${processData?.courseCount ?? 0}.`,
+          message: `Parsing complete${usedPath === 'ocr' ? ' (OCR)' : ''}. Courses detected: ${courseCount}.`,
           parseEndedAt: Date.now(),
-          parseUsedPath: processData?.usedPath ?? null,
+          parseUsedPath: usedPath,
         });
 
-        if (processData?.courseCount > 0) {
+        if (courseCount > 0) {
           try {
             await computeTranscriptSkills(transcriptId, 'Parsing complete.');
           } catch {

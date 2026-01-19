@@ -41,9 +41,10 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
     const storage = createStorageProviderFromEnv();
     const buffer = await storage.readObject(storageUrl);
+    const body = new Uint8Array(buffer);
     const filename = `transcript-${params.id}.pdf`;
 
-    return new NextResponse(buffer, {
+    return new NextResponse(body, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${filename}"`,

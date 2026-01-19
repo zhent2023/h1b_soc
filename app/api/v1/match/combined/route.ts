@@ -95,12 +95,13 @@ export async function POST(request: Request) {
     const body = await request.json();
     const dutiesText = typeof body?.dutiesText === 'string' ? body.dutiesText.trim() : '';
     const transcriptId = typeof body?.transcript_id === 'string' ? body.transcript_id.trim() : '';
-    const transcriptIds = Array.isArray(body?.transcript_ids)
+    const rawTranscriptIds: unknown[] = Array.isArray(body?.transcript_ids)
       ? body.transcript_ids
-          .filter((id: unknown): id is string => typeof id === 'string')
-          .map((id) => id.trim())
-          .filter(Boolean)
       : [];
+    const transcriptIds = rawTranscriptIds
+      .filter((id): id is string => typeof id === 'string')
+      .map((id) => id.trim())
+      .filter(Boolean);
     const uniqueTranscriptIds = Array.from(
       new Set([...transcriptIds, ...(transcriptId ? [transcriptId] : [])]),
     );
