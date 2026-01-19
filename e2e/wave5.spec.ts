@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const recommendationFixture = {
   items: [
@@ -134,6 +134,15 @@ const recommendationFixture = {
   },
 };
 
+const ensureRecommenderOpen = async (page: Page) => {
+  await page.getByTestId('address-line1').waitFor({ state: 'visible' });
+  if (await page.getByTestId('soc-recommender').count()) {
+    return;
+  }
+  await page.getByTestId('soc-recommender-toggle').click();
+  await expect(page.getByTestId('soc-recommender')).toBeVisible();
+};
+
 async function mockRecommend(page: any) {
   await page.route('**/api/v1/soc/recommend', async (route: any) => {
     if (route.request().method() !== 'POST') {
@@ -153,26 +162,43 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('shows cards and selection writes O*NET into input', async ({ page }) => {
+  await ensureRecommenderOpen(page);
   await page.getByTestId('soc-recommender-input').fill('Analyze data and build reports.');
-  await page.getByTestId('soc-recommender-submit').click();
+  await Promise.all([
+    page.waitForResponse(
+      (resp) =>
+        resp.url().includes('/api/v1/soc/recommend') && resp.request().method() === 'POST',
+    ),
+    page.getByTestId('soc-recommender-submit').click(),
+  ]);
   await expect(page.getByTestId('soc-recommend-card')).toHaveCount(6);
 
   await page.getByTestId('soc-recommend-select').first().click();
   await expect(page.getByTestId('soc-input')).toHaveValue(/15-2051.01/);
+  await ensureRecommenderOpen(page);
   await expect(page.getByTestId('soc-recommend-banner')).toBeVisible();
   expect(page.url()).toContain('focusOnet=15-2051.01');
 });
 
 test('banner restores from URL without overwriting input', async ({ page }) => {
   await page.goto('/?focusOnet=15-2051.01');
+  await ensureRecommenderOpen(page);
   await expect(page.getByTestId('soc-recommend-banner')).toBeVisible();
   await expect(page.getByTestId('soc-input')).toHaveValue('');
 });
 
 test('manual edits clear banner and focusOnet', async ({ page }) => {
+  await ensureRecommenderOpen(page);
   await page.getByTestId('soc-recommender-input').fill('Analyze data and build reports.');
-  await page.getByTestId('soc-recommender-submit').click();
+  await Promise.all([
+    page.waitForResponse(
+      (resp) =>
+        resp.url().includes('/api/v1/soc/recommend') && resp.request().method() === 'POST',
+    ),
+    page.getByTestId('soc-recommender-submit').click(),
+  ]);
   await page.getByTestId('soc-recommend-select').first().click();
+  await ensureRecommenderOpen(page);
   await expect(page.getByTestId('soc-recommend-banner')).toBeVisible();
 
   await page.getByTestId('soc-input').fill('15-1252.00');
@@ -184,8 +210,15 @@ test.describe('mobile duties behavior', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
   test('collapses duties and allows only one expanded card', async ({ page }) => {
+    await ensureRecommenderOpen(page);
     await page.getByTestId('soc-recommender-input').fill('Analyze data and build reports.');
-    await page.getByTestId('soc-recommender-submit').click();
+    await Promise.all([
+      page.waitForResponse(
+        (resp) =>
+          resp.url().includes('/api/v1/soc/recommend') && resp.request().method() === 'POST',
+      ),
+      page.getByTestId('soc-recommender-submit').click(),
+    ]);
     await expect(page.getByTestId('soc-recommend-card')).toHaveCount(6);
     await expect(page.getByTestId('soc-recommend-duties')).toHaveCount(0);
 

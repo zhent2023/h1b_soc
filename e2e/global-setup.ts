@@ -20,22 +20,49 @@ async function globalSetup(config: FullConfig) {
   const page = await browser.newPage();
 
   await page.goto(new URL('/login', baseURL).toString());
-  await page.getByLabel('Email').fill(loginEmail);
-  await page.getByLabel('Password').fill(loginPassword);
+  await page.getByTestId('login-email').fill(loginEmail);
+  await page.getByTestId('login-password').fill(loginPassword);
 
-  const [loginResponse] = await Promise.all([
-    page.waitForResponse(
-      (resp) => resp.url().includes('/api/v1/auth/login') && resp.request().method() === 'POST',
-    ),
-    page.getByRole('button', { name: 'Sign In' }).click(),
-  ]);
+  const login = async () => {
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (resp) => resp.url().includes('/api/v1/auth/login') && resp.request().method() === 'POST',
+      ),
+      page.getByTestId('login-submit').click(),
+    ]);
+    return response;
+  };
+
+  let loginResponse = await login();
+
+  if (!loginResponse.ok()) {
+    const registerUrl = new URL('/api/v1/auth/register', baseURL).toString();
+    await fetch(registerUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: loginEmail,
+        password: loginPassword,
+        confirmPassword: loginPassword,
+        fullName: 'E2E User',
+        lawFirm: 'E2E Firm',
+        agreeToAttorney: true,
+        marketingConsent: false,
+      }),
+    });
+
+    await page.goto(new URL('/login', baseURL).toString());
+    await page.getByTestId('login-email').fill(loginEmail);
+    await page.getByTestId('login-password').fill(loginPassword);
+    loginResponse = await login();
+  }
 
   if (!loginResponse.ok()) {
     throw new Error(`Login failed with status ${loginResponse.status()}`);
   }
 
   await page.waitForURL('**/', { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('address-input').waitFor({ state: 'visible', timeout: 30_000 });
+  await page.getByTestId('address-line1').waitFor({ state: 'visible', timeout: 30_000 });
 
   await page.context().storageState({ path: storageStatePath });
   await browser.close();

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { IBM_Plex_Sans, Space_Grotesk } from 'next/font/google';
 
 import './globals.css';
+import { TranscriptStateProvider } from './transcript-state';
 
 const displayFont = Space_Grotesk({
   subsets: ['latin'],
@@ -24,7 +25,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${displayFont.variable} ${bodyFont.variable}`}>
-      <body>{children}</body>
+      <body>
+        <TranscriptStateProvider>{children}</TranscriptStateProvider>
+      </body>
     </html>
   );
 }

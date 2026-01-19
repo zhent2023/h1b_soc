@@ -587,7 +587,33 @@ WHERE extname = 'vector';
 - Sticky banner and URL param behaviors correct on refresh and manual edits.
 - Mobile collapsed duties behavior correct.
 
-## 11) Manual Test Plan (Staging)
+## 11) Automated Test Workflow (Local + CI)
+
+**Prereqs**
+- DB includes pgvector (for integration tests).
+- Feature flags are controlled per test (see `setEnv()` usage in tests).
+- For automation, use stub embeddings to avoid API cost.
+
+**Recommended order**
+```bash
+pnpm test:unit
+pnpm test:integration
+pnpm test:e2e
+pnpm test:coverage
+pnpm test
+```
+
+**Artifacts**
+- Coverage report: `coverage/`
+- Playwright traces/screenshots: `test-results/` (only on failure)
+
+**SOC recommender coverage map**
+- Unit: `tests/unit/{embeddings,embeddings/provider*,embeddings/embedBatch}.test.ts`
+- Unit: `tests/unit/{duties,lookup,geocoder}.test.ts` (shared helpers)
+- Integration: `tests/integration/{socRecommend,computeEmbeddings,matchCombined}.test.ts`
+- E2E: `e2e/wave*.spec.ts` (cards, banner, wage quality, mobile behavior)
+
+## 12) Manual Test Plan (Staging)
 - DB readiness: confirm pgvector installed with:
 
 ```sql
@@ -599,7 +625,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 - UI smoke: enable client flag `NEXT_PUBLIC_FEATURE_SOC_RECOMMENDER=true`; paste duties, get 6 cards; select a card, form updated with O*NET-8; edit form manually, banner clears.
 - Rollback drill: disable flags, verify UI hidden and API 404.
 
-## 12) Rollback Plan
+## 13) Rollback Plan
 - Fast rollback (seconds):
   - FEATURE_SOC_RECOMMENDER=false
   - NEXT_PUBLIC_FEATURE_SOC_RECOMMENDER=false

@@ -28,8 +28,20 @@ model DatasetVersion {
   geoCountyToCbsas  GeoCountyToCbsa[]
   geoCbsas          GeoCbsa[]
   geoCityCounties   GeoCityCounty[]
+  skillCatalog      SkillCatalog[]
+  occupationSkaRequirements OccupationSkaRequirement[]
+  transcriptInferredSka TranscriptInferredSka[]
 
   @@index([datasetName])
+}
+
+enum TranscriptStatus {
+  CREATED
+  UPLOADED
+  PARSING
+  NEEDS_REVIEW
+  READY
+  FAILED
 }
 
 model AccessUser {
@@ -60,6 +72,7 @@ model User {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   sessions             Session[]
+  transcripts          Transcript[]
 }
 
 model Session {
@@ -73,6 +86,115 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model SkillCatalog {
+  id               String   @id @default(uuid()) @db.Uuid
+  datasetVersionId String   @db.Uuid
+  skillId          String
+  name             String
+  description      String?
+  taxonomyType     String
+  embedding        Unsupported("vector(3072)")
+  embeddingModelId String
+  contentHash      String
+  updatedAt        DateTime @updatedAt
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([datasetVersionId, skillId])
+  @@index([datasetVersionId])
+}
+
+model OccupationSkaRequirement {
+  id               String  @id @default(uuid()) @db.Uuid
+  datasetVersionId String  @db.Uuid
+  onetCode         String
+  skillId          String
+  importance       Float?
+  level            Float?
+  reqWeight        Float
+
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([datasetVersionId, onetCode, skillId])
+  @@index([datasetVersionId, onetCode])
+  @@index([datasetVersionId, skillId])
+}
+
+model CourseEmbeddingCache {
+  courseTextHash   String   @id
+  titleRaw         String
+  embedding        Unsupported("vector(3072)")
+  embeddingModelId String
+  textPolicy       String
+  updatedAt        DateTime @updatedAt
+}
+
+model Transcript {
+  id              String            @id @default(uuid()) @db.Uuid
+  userId          String            @db.Uuid
+  status          TranscriptStatus  @default(CREATED)
+  sourceFileHash  String?
+  parserProvider  String?
+  parserVersion   String?
+  parseConfidence Float?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document  TranscriptDocument?
+  courses   TranscriptCourse[]
+  inferred  TranscriptInferredSka[]
+
+  @@index([userId, createdAt])
+}
+
+model TranscriptDocument {
+  transcriptId String   @id @db.Uuid
+  storageUrl   String?
+  deletedAt    DateTime?
+  pageCount    Int?
+  createdAt    DateTime @default(now())
+
+  transcript Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+}
+
+model TranscriptCourse {
+  transcriptId String   @db.Uuid
+  courseKey    String
+  title        String
+  credits      Float?
+  grade        String?
+  passStatus   String?
+  summary      String?
+  hasSkillEvidence Boolean?
+  rawLine      String?
+  isUserEdited Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  transcript Transcript          @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  inferred   TranscriptInferredSka[]
+
+  @@id([transcriptId, courseKey])
+}
+
+model TranscriptInferredSka {
+  transcriptId     String   @db.Uuid
+  courseKey        String
+  skillId          String
+  matchScore       Float
+  skillWeight      Float
+  embeddingModelId String
+  datasetVersionId String   @db.Uuid
+  createdAt        DateTime @default(now())
+
+  transcript Transcript       @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  course     TranscriptCourse @relation(fields: [transcriptId, courseKey], references: [transcriptId, courseKey], onDelete: Cascade)
+  datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)
+
+  @@id([transcriptId, courseKey, skillId, embeddingModelId, datasetVersionId])
+  @@index([transcriptId, skillId])
 }
 
 model OflcArea {
@@ -181,6 +303,7 @@ model OnetOccupation {
   datasetVersionId String   @db.Uuid
   onetCode         String
   title            String
+  jobZone          Int?
   createdAt        DateTime @default(now())
 
   datasetVersion DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Cascade)

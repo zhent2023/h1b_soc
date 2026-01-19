@@ -37,7 +37,7 @@ export async function GET(req: Request) {
       },
       orderBy: { onetCode: 'asc' },
       take: limit,
-      select: { onetCode: true, title: true },
+      select: { onetCode: true, title: true, jobZone: true },
     }),
     prisma.onetOccupation.findMany({
       where: {
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
       },
       orderBy: { onetCode: 'asc' },
       take: limit,
-      select: { onetCode: true, title: true },
+      select: { onetCode: true, title: true, jobZone: true },
     }),
   ]);
 

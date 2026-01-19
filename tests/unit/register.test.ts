@@ -69,4 +69,42 @@ describe('parseRegisterBody', () => {
       expect(result.error).toContain('licensed attorney');
     }
   });
+
+  it('rejects invalid email formats', () => {
+    const result = parseRegisterBody({
+      email: 'bad-email',
+      password: 'secret',
+      confirmPassword: 'secret',
+      fullName: 'Test User',
+      lawFirm: 'Test Firm',
+      agreeToAttorney: true,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('Email format');
+    }
+  });
+
+  it('accepts boolean-like strings', () => {
+    const result = parseRegisterBody({
+      email: 'test@example.com',
+      password: 'secret',
+      confirmPassword: 'secret',
+      fullName: 'Test User',
+      lawFirm: 'Test Firm',
+      agreeToAttorney: 'yes',
+      marketingConsent: 'on',
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects non-object payloads', () => {
+    const result = parseRegisterBody(null);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('Invalid JSON');
+    }
+  });
 });

@@ -21,7 +21,7 @@ async function main() {
   const versionLabel = getArgValue('--versionLabel');
 
   if (!datasetName) {
-    throw new Error('Provide --dataset (oflc | onet | cbsa | city_county).');
+    throw new Error('Provide --dataset (oflc | onet | cbsa | city_county | onet_ska).');
   }
   if (!versionId && !versionLabel) {
     throw new Error('Provide --versionId or --versionLabel.');

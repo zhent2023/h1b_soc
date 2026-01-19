@@ -87,6 +87,7 @@ export default function LoginPage() {
                 <input
                   className={styles.input}
                   type="email"
+                  data-testid="login-email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   required
@@ -97,6 +98,7 @@ export default function LoginPage() {
                 <input
                   className={styles.input}
                   type="password"
+                  data-testid="login-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
@@ -105,6 +107,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 className={`${styles.primaryButton} ${styles.fullWidth}`}
+                data-testid="login-submit"
               >
                 {loading ? 'Signing in...' : 'Sign In'}
               </button>
