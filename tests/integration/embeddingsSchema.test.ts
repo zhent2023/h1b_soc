@@ -7,9 +7,16 @@ const prisma = new PrismaClient();
 
 describe('embedding schema integration', () => {
   let onetDatasetVersionId = '';
+  let previousActiveEmbeddingIds: string[] = [];
 
   beforeAll(async () => {
     await prisma.$connect();
+    previousActiveEmbeddingIds = (
+      await prisma.onetEmbeddingVersion.findMany({
+        where: { isActive: true },
+        select: { id: true },
+      })
+    ).map((row) => row.id);
     const onetVersion = await prisma.datasetVersion.findFirst({
       where: { datasetName: 'onet', isActive: true },
       select: { id: true },
@@ -21,6 +28,13 @@ describe('embedding schema integration', () => {
   });
 
   afterAll(async () => {
+    if (previousActiveEmbeddingIds.length > 0) {
+      await prisma.onetEmbeddingVersion.updateMany({ data: { isActive: false } });
+      await prisma.onetEmbeddingVersion.updateMany({
+        where: { id: { in: previousActiveEmbeddingIds } },
+        data: { isActive: true },
+      });
+    }
     await prisma.$disconnect();
   });
 

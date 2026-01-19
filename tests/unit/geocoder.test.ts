@@ -134,6 +134,62 @@ describe('geocoder', () => {
     expect(result.explain.join(' ')).toContain('Geographies missing');
   });
 
+  it('uses onelineaddress for structured input without street', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        result: {
+          addressMatches: [
+            {
+              score: 92,
+              addressComponents: { state: 'TX' },
+              geographies: { Places: [{ BASENAME: 'Austin' }] },
+            },
+          ],
+        },
+      }),
+    });
+    globalThis.fetch = fetchMock;
+
+    await geocodeCensus({ city: 'Austin', state: 'TX', zip: '78759' }, 1000);
+
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? '');
+    expect(url).toContain('/onelineaddress?');
+    expect(url).toContain('address=Austin+TX+78759');
+  });
+
+  it('returns medium confidence when multiple matches have a wide score gap', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        result: {
+          addressMatches: [
+            {
+              score: 100,
+              addressComponents: { state: 'TX' },
+              geographies: { Counties: [{ GEOID: '48001', NAME: 'Travis County' }] },
+            },
+            {
+              score: 80,
+              addressComponents: { state: 'TX' },
+              geographies: { Counties: [{ GEOID: '48003', NAME: 'Bell County' }] },
+            },
+          ],
+        },
+      }),
+    });
+
+    const result = await geocodeCensus({ fullText: 'Austin, TX' }, 1000);
+    expect(result.confidence).toBe('medium');
+    expect(result.explain.join(' ')).toContain('Multiple matches returned');
+  });
+
+  it('handles census provider errors that are not timeouts', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'));
+    const result = await geocodeCensus({ fullText: 'Nowhere' }, 1000);
+    expect(result.explain.join(' ')).toContain('Census geocoder error: network');
+  });
+
   it('handles structured census input', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,

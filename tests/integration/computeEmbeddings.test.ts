@@ -9,25 +9,85 @@ const prisma = new PrismaClient();
 
 describe('computeOnetEmbeddings integration', () => {
   let onetDatasetVersionId = '';
+  let seeded = false;
+  let previousActiveEmbeddingIds: string[] = [];
 
   beforeAll(async () => {
     await prisma.$connect();
-    const onetVersion = await prisma.datasetVersion.findFirst({
-      where: { datasetName: 'onet', isActive: true },
+    previousActiveEmbeddingIds = (
+      await prisma.onetEmbeddingVersion.findMany({
+        where: { isActive: true },
+        select: { id: true },
+      })
+    ).map((row) => row.id);
+    const dataset = await prisma.datasetVersion.create({
+      data: {
+        datasetName: 'onet',
+        versionLabel: `test-onet-${Date.now()}`,
+        isActive: false,
+      },
       select: { id: true },
     });
-    if (!onetVersion) {
-      throw new Error('Active O*NET dataset version not found. Seed or ingest data first.');
-    }
-    onetDatasetVersionId = onetVersion.id;
+    onetDatasetVersionId = dataset.id;
+    await prisma.onetDuty.createMany({
+      data: [
+        {
+          datasetVersionId: onetDatasetVersionId,
+          onetCode: '15-1252.00',
+          dutyText: 'Analyze data sets.',
+          dutyTextNorm: 'analyze data sets.',
+          sortOrder: 1,
+        },
+        {
+          datasetVersionId: onetDatasetVersionId,
+          onetCode: '15-1252.00',
+          dutyText: 'Build predictive models.',
+          dutyTextNorm: 'build predictive models.',
+          sortOrder: 2,
+        },
+        {
+          datasetVersionId: onetDatasetVersionId,
+          onetCode: '15-1252.01',
+          dutyText: 'Design data pipelines.',
+          dutyTextNorm: 'design data pipelines.',
+          sortOrder: 1,
+        },
+      ],
+    });
+    seeded = true;
   });
 
   beforeEach(async () => {
-    await prisma.onetDutyEmbedding.deleteMany();
-    await prisma.onetEmbeddingVersion.deleteMany();
+    await prisma.onetDutyEmbedding.deleteMany({
+      where: { embeddingVersion: { onetDatasetVersionId } },
+    });
+    await prisma.onetEmbeddingVersion.deleteMany({
+      where: { onetDatasetVersionId },
+    });
   });
 
   afterAll(async () => {
+    if (seeded) {
+      await prisma.onetDutyEmbedding.deleteMany({
+        where: { embeddingVersion: { onetDatasetVersionId } },
+      });
+      await prisma.onetEmbeddingVersion.deleteMany({
+        where: { onetDatasetVersionId },
+      });
+      await prisma.onetDuty.deleteMany({
+        where: { datasetVersionId: onetDatasetVersionId },
+      });
+      await prisma.datasetVersion.delete({
+        where: { id: onetDatasetVersionId },
+      });
+    }
+    if (previousActiveEmbeddingIds.length > 0) {
+      await prisma.onetEmbeddingVersion.updateMany({ data: { isActive: false } });
+      await prisma.onetEmbeddingVersion.updateMany({
+        where: { id: { in: previousActiveEmbeddingIds } },
+        data: { isActive: true },
+      });
+    }
     await prisma.$disconnect();
   });
 

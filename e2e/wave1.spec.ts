@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fillAddressLine1 } from './helpers';
 
 const addresses = [
   {
@@ -41,7 +42,7 @@ test('address only mode resolves fixture addresses', async ({ page }) => {
   await page.goto('/');
 
   for (const address of addresses) {
-    await page.getByTestId('address-input').fill(address.input);
+    await fillAddressLine1(page, address.input);
     await page.getByTestId('lookup-button').click();
     await expect(page.getByTestId('area-code')).toHaveText(address.areaCode, {
       timeout: 2000,
@@ -53,7 +54,7 @@ test('address only mode resolves fixture addresses', async ({ page }) => {
 
 test('address + soc mode shows wages and warnings where applicable', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('address-input').fill(addresses[0].input);
+  await fillAddressLine1(page, addresses[0].input);
 
   for (const check of socChecks) {
     await page.getByTestId('soc-input').fill(check.code);

@@ -8,6 +8,7 @@
 
 ## Table of Contents
 
+0. [Prerequisites](#0-prerequisites)
 1. [Summary](#1-summary)
 2. [Assumptions](#2-assumptions)
 3. [Non-goals](#3-non-goals)
@@ -17,6 +18,19 @@
 7. [Acceptance Criteria](#7-acceptance-criteria)
 8. [Manual Test Plan](#8-manual-test-plan)
 9. [Rollback Plan](#9-rollback-plan)
+
+---
+
+## 0. Prerequisites
+
+- Dependencies to install (add to `package.json`):
+  - `@vercel/blob` (production blob storage provider)
+  - `pdf-parse` (PDF text extraction; default choice for text-first parsing)
+  - `@google/generative-ai` (Gemini OCR/multimodal) if not already present
+- Update `.env.example` with new transcript-related feature flags and storage settings.
+- Ensure O*NET Content Model data is available under `ONET_DATA_DIR` (default `./data/onet`):
+  - Extract the O*NET database text release (ex: `db_30_1_text.zip`) into that directory.
+  - Ingestion scripts should read Skills/Knowledge/Abilities files and their occupation linkage tables from this location.
 
 ---
 
@@ -79,7 +93,7 @@ A **parallel, skills-based pipeline** driven by transcript PDFs:
 1. **Vercel Plan Tier**: Default assumes Pro (60s). Add `export const maxDuration = 60` to heavy routes.
 2. **Gemini PDF Support**: Smoke test included. Fallback to text extraction + LLM parse.
 3. **Duties Embedding Model**: If different from `gemini-embedding-001`, keep separate retrieval paths.
-4. **Transcript Ownership**: Default to session `User` ownership; if `ACCESS_MODE=public`, either require login for transcripts or store an anonymous owner record.
+4. **Transcript Ownership**: Require login for transcript uploads even when `ACCESS_MODE=public`; prompt users to sign in before upload.
 5. **PDF Retention**: Default to delete blob immediately after parse; store only hash + metadata.
 
 ### Codebase Fit Notes (h1b_soc)
@@ -251,6 +265,9 @@ model Transcript {
   @@index([userId, createdAt])
 }
 
+// Update User model to add the reverse relation (no new column needed):
+//   transcripts Transcript[]
+
 model TranscriptDocument {
   transcriptId String   @id @db.Uuid
   storageUrl   String?
@@ -277,6 +294,9 @@ model TranscriptCourse {
   @@id([transcriptId, courseKey])
 }
 
+// Note: courseKey is transcript-scoped and should incorporate normalized title
+// plus optional credits/grade, rawLine, and index to avoid collisions on repeats.
+
 model TranscriptInferredSka {
   transcriptId     String   @db.Uuid
   courseKey        String
@@ -295,11 +315,21 @@ model TranscriptInferredSka {
 }
 ```
 
-Update `DatasetVersion` to add relations:
+Update `DatasetVersion` to add relations (no new columns; uses existing `datasetName` to separate datasets):
 
 ```prisma
+model DatasetVersion {
+  id           String   @id @default(uuid()) @db.Uuid
+  datasetName  String
+  versionLabel String
+  isActive     Boolean
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // New relations for SKA datasets
   skillCatalog              SkillCatalog[]
   occupationSkaRequirements OccupationSkaRequirement[]
+}
 ```
 
 Update `scripts/ingest/activate_dataset.ts` to allow `datasetName = 'onet_ska'`.
@@ -350,9 +380,11 @@ import { NextResponse } from 'next/server';
 
 import { getPrisma } from '../../../../../src/db/prisma';
 import { requireAccess } from '../../../../../src/lib/access';
+import { rateLimitOrThrow } from '../../../../../src/lib/rateLimit';
 import { storageProvider } from '../../../../../src/lib/storage';
 
 export const runtime = 'nodejs';
+export const maxDuration = 30;
 
 export async function POST(request: Request) {
   const prisma = getPrisma();
@@ -360,6 +392,7 @@ export async function POST(request: Request) {
   if (access.source !== 'session') {
     return NextResponse.json({ error: 'Login required' }, { status: 401 });
   }
+  await rateLimitOrThrow({ key: 'transcript_create', limitPerMin: 20, req: request });
   const user = await prisma.user.findUnique({ where: { email: access.email } });
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 401 });
 
@@ -384,12 +417,16 @@ export async function POST(request: Request) {
 Add `complete-upload` to mark the transcript as UPLOADED and persist file metadata
 (hash, page count if available). The PDF is deleted after parsing, so we only
 keep metadata.
+Apply `rateLimitOrThrow` to `create`, `complete-upload`, `process`, and all match endpoints.
+Wrap all new route handlers in try/catch and mirror the `/soc/recommend` error mapping (RateLimitError, 4xx/5xx).
+Enforce a maximum upload size using `TRANSCRIPT_MAX_BYTES` (default 10MB) via blob metadata checks and client-side validation.
 
 **Why:**
 - Direct upload avoids Vercel body limits (4.5MB)
 - Optional file hashing enables PDF dedupe if desired
 - Clean separation: create → upload → process
 - No long-term PDF retention; delete after parsing
+- Error handling: mirror `/soc/recommend` try/catch structure for consistent 4xx/5xx responses
 
 ---
 
@@ -433,6 +470,9 @@ export interface TranscriptParserProvider {
 Create process route `app/api/v1/transcripts/[id]/process/route.ts`:
 
 ```typescript
+import { pdfTextProvider } from '../../../../../src/lib/transcripts/providers/pdfTextProvider';
+import { geminiOcrProvider } from '../../../../../src/lib/transcripts/providers/geminiOcrProvider';
+
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Extend timeout for OCR
 
@@ -443,6 +483,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const access = await requireAccess(request, prisma);
   if (access.source !== 'session') {
     return NextResponse.json({ error: 'Login required' }, { status: 401 });
+  }
+  await rateLimitOrThrow({ key: 'transcript_process', limitPerMin: 10, req: request });
+  const user = await prisma.user.findUnique({ where: { email: access.email } });
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 401 });
+  const transcript = await prisma.transcript.findUnique({ where: { id: params.id } });
+  if (!transcript || transcript.userId !== user.id) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
   // 1. Update status to PARSING
@@ -458,21 +505,22 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Transcript document missing' }, { status: 404 });
   }
 
-  // 2. Effect-first parsing: multimodal OCR first
-  let result = await geminiOcrProvider.parseFromUrl(doc.storageUrl);
+  // 2. Text-first parsing: fast local extraction
+  let result = await pdfTextProvider.parseFromUrl(doc.storageUrl);
 
-  // 3. Fallback to text extraction if OCR fails or is low-confidence
+  // 3. Fallback to OCR if text extraction fails or is low-confidence
   if (result.confidence < 0.5 || result.courses.length === 0) {
-    result = await pdfTextProvider.parseFromUrl(doc.storageUrl);
+    result = await geminiOcrProvider.parseFromUrl(doc.storageUrl);
   }
 
   // 4. Upsert courses with deterministic keys
-  const courseData = result.courses.map((c) => ({
+  const courseData = result.courses.map((c, idx) => ({
     transcriptId: params.id,
-    courseKey: sha256(`${normalize(c.title)}|${c.credits}|${c.grade}`).slice(0, 16),
+    courseKey: computeCourseKey(c.title, c.credits, c.grade, c.rawLine, idx),
     title: c.title,
     credits: c.credits,
     grade: c.grade,
+    rawLine: c.rawLine,
   }));
 
   // 5. Transaction: delete old, insert new, update status
@@ -499,12 +547,33 @@ export async function POST(request: Request, { params }: { params: { id: string 
 }
 ```
 
+Helper for stable course keys (handles missing values and repeats):
+
+```typescript
+function computeCourseKey(
+  title: string,
+  credits?: number,
+  grade?: string,
+  rawLine?: string,
+  index?: number,
+) {
+  const normalized = normalizeCourseTitle(title);
+  const creditsPart = credits ?? '';
+  const gradePart = grade ?? '';
+  const rawPart = rawLine ?? '';
+  const indexPart = typeof index === 'number' ? index : '';
+  // Use a longer slice to reduce collision risk while keeping keys short.
+  return sha256(`${normalized}|${creditsPart}|${gradePart}|${rawPart}|${indexPart}`).slice(0, 24);
+}
+```
+
 **Why:**
-- Effect-first parsing uses multimodal OCR; fallback keeps resiliency
+- Text-first parsing keeps OCR costs low while preserving a high-accuracy fallback
 - Zod schema validation prevents LLM format errors
 - `NEEDS_REVIEW` enables human correction
 - `maxDuration = 60` extends Vercel timeout
 - PDF deleted after parse; re-run requires re-upload
+- Optional: wrap OCR calls with a timeout helper to avoid hanging parses
 
 ---
 
@@ -526,7 +595,13 @@ Create update route for course edits:
 // PATCH /api/v1/transcripts/[id]/courses/update
 export async function PATCH(request: Request, { params }) {
   const prisma = getPrisma();
-  await requireAccess(request, prisma);
+  const access = await requireAccess(request, prisma);
+  const user = await prisma.user.findUnique({ where: { email: access.email } });
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 401 });
+  const transcript = await prisma.transcript.findUnique({ where: { id: params.id } });
+  if (!transcript || transcript.userId !== user.id) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   const { courses } = await request.json();
 
   await prisma.$transaction([
@@ -534,13 +609,14 @@ export async function PATCH(request: Request, { params }) {
     prisma.transcriptCourse.deleteMany({ where: { transcriptId: params.id } }),
     prisma.transcriptInferredSka.deleteMany({ where: { transcriptId: params.id } }),
     // Insert edited courses
-    ...courses.map((c) => prisma.transcriptCourse.create({
+    ...courses.map((c, idx) => prisma.transcriptCourse.create({
       data: {
         transcriptId: params.id,
-        courseKey: computeCourseKey(c.title, c.credits, c.grade),
+        courseKey: computeCourseKey(c.title, c.credits, c.grade, c.rawLine, idx),
         title: c.title,
         credits: c.credits,
         grade: c.grade,
+        rawLine: c.rawLine,
         isUserEdited: true,
       },
     })),
@@ -560,6 +636,14 @@ Create React page with:
 - Editable course table (title, credits, grade)
 - Action buttons: Save, Re-run Parsing, Compute Skills Match
 
+Entry points:
+- On the main recommend panel, add an "Upload Transcript (PDF)" control next to duties input.
+- When upload completes, store `transcript_id` and show a link to `/transcripts/[id]` for review.
+- Recommend button enables when duties text is non-empty OR transcript_id is present.
+
+Security note:
+- Every `/transcripts/[id]/...` route (GET, PATCH, process, compute-ska, delete) must enforce transcript ownership (`transcript.userId === user.id`).
+
 **Why:**
 - Human review is the most reliable OCR error mitigation (9)
 - Evidence invalidation on edit ensures fresh SKA mapping
@@ -575,6 +659,12 @@ Create React page with:
 scripts/ingest/ingest_onet_ska.ts
 scripts/ingest/ingest_onet_ska_requirements.ts
 ```
+
+**Data source:**
+- Use the official O*NET Database text release (ex: `db_30_1_text.zip`).
+- Extract the archive into `ONET_DATA_DIR` (default `./data/onet`).
+- Ingestion scripts should read Skills/Knowledge/Abilities descriptors plus the occupation linkage/importance/level tables from that directory.
+- Before implementing parsers, inspect the extracted filenames; map to the exact O*NET file names present (they can vary slightly by release).
 
 **Action:**
 
@@ -861,6 +951,43 @@ export async function loadSkillCatalog(): Promise<{ entries: SkillEntry[]; datas
 }
 ```
 
+Create `src/lib/ska/similarity.ts`:
+
+```typescript
+export function computeMagnitude(vec: ArrayLike<number>) {
+  let sum = 0;
+  for (let i = 0; i < vec.length; i += 1) {
+    const v = vec[i] ?? 0;
+    sum += v * v;
+  }
+  return Math.sqrt(sum);
+}
+
+export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>) {
+  const len = Math.min(a.length, b.length);
+  let dot = 0;
+  let aMag = 0;
+  let bMag = 0;
+  for (let i = 0; i < len; i += 1) {
+    const av = a[i] ?? 0;
+    const bv = b[i] ?? 0;
+    dot += av * bv;
+    aMag += av * av;
+    bMag += bv * bv;
+  }
+  const denom = Math.sqrt(aMag) * Math.sqrt(bMag);
+  return denom > 0 ? dot / denom : 0;
+}
+
+export function topK(scores: number[], k: number, threshold: number) {
+  return scores
+    .map((score, index) => ({ score, index }))
+    .filter((entry) => entry.score >= threshold)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k);
+}
+```
+
 Create `src/lib/ska/mapCoursesToSka.ts`:
 
 ```typescript
@@ -908,10 +1035,98 @@ export async function mapCoursesToSka(
 }
 ```
 
+Grade/credits weighting helpers (MVP defaults):
+
+```typescript
+function getCreditsWeight(credits?: number) {
+  if (!credits || credits <= 0) return 1;
+  // Normalize around 3-credit courses, clamp to avoid extremes.
+  return Math.min(1.5, Math.max(0.5, credits / 3));
+}
+
+function getGradeWeight(grade?: string) {
+  if (!grade) return 1;
+  const normalized = grade.trim().toUpperCase();
+  if (normalized === 'P' || normalized === 'PASS') return 1;
+  if (normalized === 'F' || normalized === 'FAIL') return 0.2;
+
+  const letterMap: Record<string, number> = {
+    A: 1.0,
+    'A-': 0.95,
+    B: 0.85,
+    'B+': 0.9,
+    'B-': 0.8,
+    C: 0.7,
+    'C+': 0.75,
+    'C-': 0.65,
+    D: 0.5,
+  };
+  if (letterMap[normalized] !== undefined) return letterMap[normalized];
+
+  const numeric = Number(normalized.replace(/[^\d.]/g, ''));
+  if (Number.isFinite(numeric)) {
+    if (numeric <= 4) {
+      return Math.min(1, Math.max(0.2, numeric / 4));
+    }
+    if (numeric <= 100) {
+      return Math.min(1, Math.max(0.2, numeric / 100));
+    }
+  }
+  return 1;
+}
+```
+
+Create `app/api/v1/transcripts/[id]/compute-ska/route.ts`:
+
+```typescript
+export const runtime = 'nodejs';
+
+export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const prisma = getPrisma();
+  const access = await requireAccess(request, prisma);
+  await rateLimitOrThrow({ key: 'transcript_compute_ska', limitPerMin: 10, req: request });
+  const user = await prisma.user.findUnique({ where: { email: access.email } });
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 401 });
+  const transcript = await prisma.transcript.findUnique({ where: { id: params.id } });
+  if (!transcript || transcript.userId !== user.id) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+  if (transcript.status !== 'READY') {
+    return NextResponse.json({ error: 'Transcript not ready' }, { status: 400 });
+  }
+
+  const courses = await prisma.transcriptCourse.findMany({
+    where: { transcriptId: params.id },
+    select: { courseKey: true, title: true, credits: true, grade: true, rawLine: true },
+  });
+
+  const embeddings = await getCourseEmbeddings(
+    courses.map((c) => ({ courseKey: c.courseKey, title: c.title })),
+  );
+
+  const provider = createEmbeddingProviderFromEnv();
+  const enrichedCourses = courses.map((c) => {
+    const entry = embeddings.get(c.courseKey);
+    return {
+      courseKey: c.courseKey,
+      title: c.title,
+      credits: c.credits ?? undefined,
+      grade: c.grade ?? undefined,
+      embedding: entry?.embedding ?? [],
+      embeddingModelId: provider.model,
+    };
+  });
+
+  const results = await mapCoursesToSka(params.id, enrichedCourses);
+  return NextResponse.json({ evidenceCount: results.length });
+}
+```
+
 **Why:**
 - ~150 skills = in-memory scan faster than 40 DB KNN queries
 - Avoids Neon connection pressure (5)(6)
 - Evidence table is the audit backbone
+- Cache note: in serverless/multi-worker deployments each instance maintains its own SKA cache; cold starts reload, which is acceptable for ~150 entries.
 
 ---
 
@@ -927,6 +1142,43 @@ app/api/v1/match/skills/route.ts
 
 **Action:**
 
+Create `src/lib/ska/occupationRequirementsCache.ts`:
+
+```typescript
+let cache: { entries: Map<string, OccupationRequirement[]>; loadedAt: Date; datasetVersionId: string } | null = null;
+const TTL_MS = 10 * 60 * 1000;
+type OccupationRequirement = { skillId: string; reqWeight: number };
+
+export async function loadOccupationRequirements(): Promise<Map<string, OccupationRequirement[]>> {
+  if (cache && Date.now() - cache.loadedAt.getTime() < TTL_MS) {
+    return cache.entries;
+  }
+
+  const datasetVersion = await prisma.datasetVersion.findFirst({
+    where: { datasetName: 'onet_ska', isActive: true },
+    select: { id: true },
+  });
+  if (!datasetVersion) {
+    throw new Error('Active O*NET SKA dataset version not found.');
+  }
+
+  const rows = await prisma.occupationSkaRequirement.findMany({
+    where: { datasetVersionId: datasetVersion.id },
+    select: { onetCode: true, skillId: true, reqWeight: true },
+  });
+
+  const map = new Map<string, OccupationRequirement[]>();
+  for (const row of rows) {
+    const bucket = map.get(row.onetCode) ?? [];
+    bucket.push({ skillId: row.skillId, reqWeight: row.reqWeight });
+    map.set(row.onetCode, bucket);
+  }
+
+  cache = { entries: map, loadedAt: new Date(), datasetVersionId: datasetVersion.id };
+  return map;
+}
+```
+
 Create `src/lib/ska/scoreOccupations.ts`:
 
 ```typescript
@@ -934,7 +1186,7 @@ const TAU = 0.6; // Saturation parameter
 
 export async function scoreOccupations(
   transcriptId: string,
-  topN: number = 20
+  topN: number = 6
 ): Promise<OccupationScore[]> {
   // 1. Load evidence and aggregate user skill weights
   const evidence = await prisma.transcriptInferredSka.findMany({
@@ -999,7 +1251,9 @@ Create `app/api/v1/match/skills/route.ts`:
 export async function POST(request: Request) {
   const prisma = getPrisma();
   await requireAccess(request, prisma);
-  const { transcript_id, top_n = 20 } = await request.json();
+  await rateLimitOrThrow({ key: 'match_skills', limitPerMin: 30, req: request });
+  const { transcript_id, top_n = 6 } = await request.json();
+  const safeTopN = Math.max(1, Math.min(6, Number(top_n) || 6));
 
   // Verify transcript is READY
   const transcript = await prisma.transcript.findUnique({ where: { id: transcript_id } });
@@ -1007,7 +1261,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Transcript not ready' }, { status: 400 });
   }
 
-  const results = await scoreOccupations(transcript_id, top_n);
+  const results = await scoreOccupations(transcript_id, safeTopN);
 
   // Enrich with evidence
   const enriched = await Promise.all(
@@ -1042,6 +1296,11 @@ app/api/v1/match/combined/route.ts
 Refactor the duties KNN logic out of `app/api/v1/soc/recommend/route.ts` into
 `src/lib/match/dutiesMatch.ts` so both endpoints share the same implementation.
 
+**API strategy:**
+- Short term: keep `/api/v1/soc/recommend` unchanged for duties-only flows.
+- New `/api/v1/match/combined` serves duties-only, transcript-only, and fused flows.
+- Future (optional): let `/api/v1/soc/recommend` delegate internally to `match/combined` behind a feature flag.
+
 ```typescript
 // Feature flags
 const FEATURE_SKILL_MATCHING = process.env.FEATURE_SKILL_MATCHING === 'true';
@@ -1050,10 +1309,12 @@ const FEATURE_MATCH_FUSION = process.env.FEATURE_MATCH_FUSION === 'true';
 export async function POST(request: Request) {
   const prisma = getPrisma();
   await requireAccess(request, prisma);
-  const { dutiesText, transcript_id, top_n = 20 } = await request.json();
+  await rateLimitOrThrow({ key: 'match_combined', limitPerMin: 30, req: request });
+  const { dutiesText, transcript_id, top_n = 6 } = await request.json();
+  const safeTopN = Math.max(1, Math.min(6, Number(top_n) || 6));
 
   // 1. Always call existing duties matcher (unchanged)
-  const dutiesResult = await matchDuties({ prisma, dutiesText, topN: top_n });
+  const dutiesResult = await matchDuties({ prisma, dutiesText, topN: safeTopN });
 
   // 2. Optionally call skills matcher
   let skillsResult = null;
@@ -1061,7 +1322,7 @@ export async function POST(request: Request) {
     const transcript = await prisma.transcript.findUnique({ where: { id: transcript_id } });
     
     if (transcript?.status === 'READY') {
-      skillsResult = await scoreOccupations(transcript_id, top_n);
+      skillsResult = await scoreOccupations(transcript_id, safeTopN);
     }
   }
 
@@ -1080,8 +1341,8 @@ export async function POST(request: Request) {
 
   const allCodes = new Set([...dutiesRank.keys(), ...skillsRank.keys()]);
   const fused = [...allCodes].map((code) => {
-    const dRank = dutiesRank.get(code) || top_n + 1;
-    const sRank = skillsRank.get(code) || top_n + 1;
+    const dRank = dutiesRank.get(code) || safeTopN + 1;
+    const sRank = skillsRank.get(code) || safeTopN + 1;
     const rrfScore = 1 / (K + dRank) + 1 / (K + sRank);
 
     return {
@@ -1095,7 +1356,7 @@ export async function POST(request: Request) {
   fused.sort((a, b) => b.rrf_score - a.rrf_score);
 
   return NextResponse.json({
-    results: fused.slice(0, top_n).map((f, i) => ({ ...f, final_rank: i + 1 })),
+    results: fused.slice(0, safeTopN).map((f, i) => ({ ...f, final_rank: i + 1 })),
     fusion_applied: true,
   });
 }
@@ -1105,6 +1366,11 @@ export async function POST(request: Request) {
 - RRF handles different score scales without calibration
 - Feature flags ensure existing behavior unchanged (6)
 - Graceful degradation when transcript not ready
+- `top_n` defaults to 6 and is server-capped; frontend does not expose it
+
+**UI behavior:**
+- Reuse the existing "Top 6" tag on the recommender card; do not add another label.
+- Disable the Recommend button until either dutiesText is non-empty or a transcript_id is present.
 
 ---
 
@@ -1129,7 +1395,13 @@ Add DELETE endpoint:
 ```typescript
 export async function DELETE(request: Request, { params }) {
   const prisma = getPrisma();
-  await requireAccess(request, prisma);
+  const access = await requireAccess(request, prisma);
+  const user = await prisma.user.findUnique({ where: { email: access.email } });
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 401 });
+  const transcript = await prisma.transcript.findUnique({ where: { id: params.id } });
+  if (!transcript || transcript.userId !== user.id) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   // 1. Delete from storage
   const doc = await prisma.transcriptDocument.findUnique({ where: { transcriptId: params.id } });
   if (doc) await storageProvider.deleteObject(doc.storageUrl);
@@ -1146,6 +1418,12 @@ Add cache cleanup job (optional):
 DELETE FROM "CourseEmbeddingCache" WHERE "updatedAt" < NOW() - INTERVAL '30 days';
 ```
 
+**Cost note (cache retention):**
+- Do **not** enable cleanup in MVP if you want maximum cache reuse.
+- Avoid `prisma migrate reset` or truncating `CourseEmbeddingCache`.
+- Keep `EMBEDDING_MODEL` and text policy stable to preserve hash hits.
+- Ensure local DB volume persists (do not delete Docker volume).
+
 **Why:**
 - Education records are sensitive; minimize retention
 - Metrics needed for timeout debugging
@@ -1156,6 +1434,9 @@ DELETE FROM "CourseEmbeddingCache" WHERE "updatedAt" < NOW() - INTERVAL '30 days
 Each step is gated. Do not start the next step until its test plan passes
 and expected results are met.
 
+0. **Step 0: Prerequisites**
+   - Test plan: install required npm deps; update `.env.example`.
+   - Expected results: build succeeds; new env vars documented.
 1. **Step 1: Embedding Guard + Smoke Test**
    - Test plan: run `pnpm smoke:embedding`.
    - Expected results: exit code 0, dimension = 3072.
@@ -1205,6 +1486,8 @@ and expected results are met.
 | 4 | **Generic SKA dominance** - "Active Listening" matches everything | Weak differentiation | Medium | IDF weighting; stoplist; per-course topK limit |
 | 5 | **Cache unbounded growth** | Storage costs, slow queries | Low | TTL-based cleanup; unique index on normalized title |
 | 6 | **No PDF retention** | Harder to debug parsing issues | Medium | Store raw_line + parser metadata; allow re-upload |
+| 7 | **TranscriptInferredSka composite PK size** | Larger indexes, slower writes | Low | If needed, switch to UUID primary key + unique constraint on (transcriptId, courseKey, skillId, embeddingModelId, datasetVersionId) |
+| 8 | **Malicious or oversized PDFs** | Parser crashes or resource spikes | Low | Enforce size limit, use vetted parser, keep dependencies updated |
 
 ---
 
@@ -1258,12 +1541,45 @@ and expected results are met.
 | 4 | Course embedding calls = 0 (cache hit) or 1 (batch), never per-course | Logs |
 | 5 | Skills endpoint returns evidence: ≥3 SKA with supporting courses per occupation | Response schema |
 | 6 | Combined endpoint returns duties_rank, skills_rank, fused rank | Response schema |
-| 7 | Gating applied when transcript status = NEEDS_REVIEW | Manual test |
-| 8 | Uploaded PDF deleted after parsing | Manual test |
+| 7 | Skills/combined endpoints default to top 6 and clamp larger requests | Response schema |
+| 8 | Gating applied when transcript status = NEEDS_REVIEW | Manual test |
+| 9 | Uploaded PDF deleted after parsing | Manual test |
+| 10 | Recommend button disabled until duties or transcript provided; Top 6 tag appears once | Manual test |
+| 11 | Required npm deps installed and `.env.example` updated with new vars | Code review |
+| 12 | Transcript routes enforce ownership checks and size limits | Manual test |
+| 13 | New API routes have rate limits and consistent error handling | Code review |
 
 ---
 
 ## 8. Manual Test Plan
+
+### Automated Test Workflow (Local + CI)
+
+**Prereqs**
+- Local DB running (pgvector). `DATABASE_URL` points to the docker DB.
+- Transcript routes require login: `ACCESS_MODE=invite`.
+- For automation use stub embeddings to avoid API costs:
+  `EMBEDDING_PROVIDER=stub`, `EMBEDDING_MODEL=stub`.
+- Playwright uses local storage by default (see `playwright.config.ts`).
+
+**Recommended order**
+```bash
+pnpm test:unit
+pnpm test:integration
+pnpm test:e2e
+pnpm test:coverage
+pnpm test
+```
+
+**Artifacts**
+- Coverage report: `coverage/`
+- Playwright traces/screenshots: `test-results/` (only on failure)
+
+**Transcript-specific coverage map**
+- Unit: `tests/unit/transcripts/{llmCourseParser,geminiOcrProvider,pdfTextProvider,courseFilters,courseKey}.test.ts`
+- Unit: `tests/unit/ska/{mapCoursesToSka,scoreOccupations,skillCatalogCache}.test.ts`
+- Integration: `tests/integration/{skillsMatch,matchCombined,computeEmbeddings}.test.ts`
+- E2E: `e2e/transcript.spec.ts` (fixtures in `e2e/fixtures/transcript-*.pdf`)
 
 ### Test 1: Baseline Regression
 
@@ -1363,10 +1679,10 @@ GROUP BY "onetCode" LIMIT 5;
 ### Test 7: Skills-Only Match
 
 **Steps:**
-1. POST `/api/v1/match/skills` with `{ transcript_id, top_n: 10 }`
+1. POST `/api/v1/match/skills` with `{ transcript_id }`
 
 **Expected:**
-- 10 occupations returned
+- 6 occupations returned (default)
 - Each includes coverage, match, topContributingSkills, supportingCourses
 
 ---
@@ -1388,7 +1704,22 @@ FEATURE_MATCH_FUSION=true
 
 ---
 
-### Test 9: Cache Effectiveness
+### Test 9: Recommend Button Gating
+
+**Steps:**
+1. Load the recommend UI with no duties text and no transcript selected
+2. Confirm Recommend button is disabled
+3. Enter duties text OR select a transcript
+4. Confirm Recommend button is enabled
+5. Verify only one "Top 6" tag is visible
+
+**Expected:**
+- Button disabled until at least one input is present
+- Single "Top 6" label
+
+---
+
+### Test 10: Cache Effectiveness
 
 **Steps:**
 1. Compute SKA for transcript
@@ -1400,7 +1731,7 @@ FEATURE_MATCH_FUSION=true
 
 ---
 
-### Test 10: Confidence Gating
+### Test 11: Confidence Gating
 
 **Setup:**
 1. Manually set transcript status to NEEDS_REVIEW
@@ -1411,6 +1742,17 @@ FEATURE_MATCH_FUSION=true
 **Expected:**
 - Skills contribution reduced or zero
 - Response indicates gating applied
+
+---
+
+### Test 12: Transcript Ownership Enforcement
+
+**Steps:**
+1. Create transcript as User A
+2. Attempt to GET/PATCH/PROCESS/COMPUTE as User B
+
+**Expected:**
+- All transcript routes return 404 for non-owners
 
 ---
 
@@ -1539,6 +1881,7 @@ EMBEDDING_API_URL=https://generativelanguage.googleapis.com/v1beta
 FEATURE_SKILL_MATCHING=false
 FEATURE_MATCH_FUSION=false
 NEXT_PUBLIC_FEATURE_SKILL_MATCHING=false
+TRANSCRIPT_MAX_BYTES=10485760
 
 # Optional
 ONET_DATA_DIR=./data/onet
@@ -1546,3 +1889,5 @@ BLOB_READ_WRITE_TOKEN=... (for Vercel Blob)
 STORAGE_PROVIDER=vercel_blob|local
 LOCAL_STORAGE_DIR=./.local/transcripts
 ```
+
+**Note:** `.env.example` must be updated to include all new variables above.

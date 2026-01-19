@@ -57,22 +57,88 @@ async function buildRequest(body: Record<string, unknown>) {
 
 describe('soc recommend API', () => {
   let onetDatasetVersionId = '';
+  let seeded = false;
 
   beforeAll(async () => {
     await prisma.$connect();
-    const onetVersion = await prisma.datasetVersion.findFirst({
-      where: { datasetName: 'onet', isActive: true },
+    const oflcVersion = await prisma.datasetVersion.findFirst({
+      where: { datasetName: 'oflc', isActive: true },
       select: { id: true },
     });
-    if (!onetVersion) {
-      throw new Error('Active O*NET dataset version not found. Seed or ingest data first.');
+    if (!oflcVersion) {
+      throw new Error('Active OFLC dataset version not found. Seed or ingest data first.');
     }
-    onetDatasetVersionId = onetVersion.id;
+    const soc = await prisma.socTitle.findFirst({
+      where: { datasetVersionId: oflcVersion.id },
+      select: { socCode: true },
+    });
+    if (!soc) {
+      throw new Error('No SOC titles found in the active OFLC dataset.');
+    }
+
+    const dataset = await prisma.datasetVersion.create({
+      data: {
+        datasetName: 'onet',
+        versionLabel: `test-onet-socrec-${Date.now()}`,
+        isActive: false,
+      },
+      select: { id: true },
+    });
+    onetDatasetVersionId = dataset.id;
+
+    const onetCodes = [`${soc.socCode}.00`, `${soc.socCode}.01`];
+    await prisma.socTitle.create({
+      data: {
+        datasetVersionId: onetDatasetVersionId,
+        socCode: soc.socCode,
+        title: `SOC ${soc.socCode}`,
+      },
+    });
+    await prisma.onetOccupation.createMany({
+      data: onetCodes.map((code) => ({
+        datasetVersionId: onetDatasetVersionId,
+        onetCode: code,
+        title: `O*NET ${code}`,
+      })),
+    });
+    await prisma.onetSocMap.createMany({
+      data: onetCodes.map((code) => ({
+        datasetVersionId: onetDatasetVersionId,
+        onetCode: code,
+        socCode: soc.socCode,
+      })),
+    });
+    await prisma.onetDuty.createMany({
+      data: [
+        {
+          datasetVersionId: onetDatasetVersionId,
+          onetCode: onetCodes[0],
+          dutyText: 'Analyze data sets.',
+          dutyTextNorm: 'analyze data sets.',
+          sortOrder: 1,
+        },
+        {
+          datasetVersionId: onetDatasetVersionId,
+          onetCode: onetCodes[1],
+          dutyText: 'Build data pipelines.',
+          dutyTextNorm: 'build data pipelines.',
+          sortOrder: 1,
+        },
+      ],
+    });
+    seeded = true;
   });
 
   beforeEach(async () => {
-    await prisma.onetDutyEmbedding.deleteMany();
-    await prisma.onetEmbeddingVersion.deleteMany();
+    await prisma.onetDutyEmbedding.deleteMany({
+      where: { embeddingVersion: { onetDatasetVersionId } },
+    });
+    await prisma.onetEmbeddingVersion.deleteMany({
+      where: { onetDatasetVersionId },
+    });
+    await prisma.onetEmbeddingVersion.updateMany({
+      data: { isActive: false },
+    });
 
     setEnv('FEATURE_SOC_RECOMMENDER', 'true');
     setEnv('EMBEDDING_PROVIDER', 'stub');
@@ -88,6 +154,29 @@ describe('soc recommend API', () => {
 
   afterAll(async () => {
     resetEnv();
+    if (seeded) {
+      await prisma.onetDutyEmbedding.deleteMany({
+        where: { embeddingVersion: { onetDatasetVersionId } },
+      });
+      await prisma.onetEmbeddingVersion.deleteMany({
+        where: { onetDatasetVersionId },
+      });
+      await prisma.onetDuty.deleteMany({
+        where: { datasetVersionId: onetDatasetVersionId },
+      });
+      await prisma.onetSocMap.deleteMany({
+        where: { datasetVersionId: onetDatasetVersionId },
+      });
+      await prisma.onetOccupation.deleteMany({
+        where: { datasetVersionId: onetDatasetVersionId },
+      });
+      await prisma.socTitle.deleteMany({
+        where: { datasetVersionId: onetDatasetVersionId },
+      });
+      await prisma.datasetVersion.delete({
+        where: { id: onetDatasetVersionId },
+      });
+    }
     await prisma.$disconnect();
   });
 

@@ -60,6 +60,7 @@ async function main() {
   const dutyFile = getArgValue('--dutyFile');
   const mapFile = getArgValue('--mapFile');
   const occupationFile = getArgValue('--occupationFile');
+  const jobZoneFile = getArgValue('--jobZoneFile');
 
   const resolvedZipPath = await resolveZipPath({ zipPath, zipUrl });
   const zip = await openZip(resolvedZipPath);
@@ -73,6 +74,10 @@ async function main() {
     (occupationFile ? pickEntry(entries, [/occupation data/i], occupationFile) : null) ??
     entries.find((entry) => /occupation data/i.test(entry.path)) ??
     pickEntry(entries, [/occupation data/i, /occupation/i], occupationFile, dutyEntry?.path);
+  const jobZoneEntry =
+    (jobZoneFile ? pickEntry(entries, [/job zones/i], jobZoneFile) : null) ??
+    entries.find((entry) => /job zones/i.test(entry.path)) ??
+    pickEntry(entries, [/job zones/i], jobZoneFile);
   let mapEntry = pickEntry(
     entries,
     [/soc/i, /crosswalk/i, /mapping/i],
@@ -96,6 +101,31 @@ async function main() {
       metaJson: { source: resolvedZipPath },
     },
   });
+
+  const jobZoneByCode = new Map<string, number>();
+  let jobZoneCount = 0;
+  if (jobZoneEntry) {
+    await parseCsvStream({
+      stream: jobZoneEntry.stream(),
+      delimiter: inferDelimiter(jobZoneEntry.path),
+      onRow: async (row) => {
+        const onetCode =
+          getField(row, ['onet_soc_code', 'onet_code', 'onet_soc', 'onet-soc code']) ??
+          getField(row, ['o*net-soc code', 'onet']);
+        const jobZoneRaw =
+          getField(row, ['job zone', 'job_zone', 'jobzone', 'job_zone_id', 'jobzone_id']);
+        if (!onetCode || !jobZoneRaw) {
+          return;
+        }
+        const jobZone = Number.parseInt(jobZoneRaw, 10);
+        if (!Number.isFinite(jobZone)) {
+          return;
+        }
+        jobZoneByCode.set(onetCode, jobZone);
+        jobZoneCount += 1;
+      },
+    });
+  }
 
   let dutyCount = 0;
   let dutyOrder = 0;
@@ -161,6 +191,7 @@ async function main() {
           datasetVersionId: datasetVersion.id,
           onetCode,
           title,
+          jobZone: jobZoneByCode.get(onetCode) ?? null,
         });
         occupationCount += 1;
 
@@ -260,6 +291,7 @@ async function main() {
         occupations: occupationCount,
         mappings: mapCount,
         socTitles: socTitleCount,
+        jobZones: jobZoneCount,
       },
     },
   });

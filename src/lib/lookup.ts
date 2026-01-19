@@ -90,6 +90,7 @@ export interface LookupResponse {
   duties?: {
     duties: { text: string; sources: string[] }[];
     note?: string;
+    jobZone?: number | null;
   };
   extremes?: {
     lowest: AreaWageRow[];
@@ -214,6 +215,25 @@ export async function lookup(
   }
   const soc6 = normalizedSoc?.soc6 ?? null;
   const onet8 = normalizedSoc?.onet8 ?? null;
+  const onetLookupCode =
+    onetVersionId && soc6
+      ? (onet8 ?? `${soc6}.00`)
+      : null;
+
+  const jobZone =
+    onetLookupCode && onetVersionId
+      ? (
+          await prisma.onetOccupation.findUnique({
+            where: {
+              datasetVersionId_onetCode: {
+                datasetVersionId: onetVersionId,
+                onetCode: onetLookupCode,
+              },
+            },
+            select: { jobZone: true },
+          })
+        )?.jobZone ?? null
+      : null;
 
   if (req.socCode && !soc6) {
     warnings.push('SOC code ignored due to invalid format.');
@@ -529,6 +549,7 @@ export async function lookup(
     });
 
     const duties = await resolveDuties(soc6);
+    const dutiesWithJobZone = { ...duties, jobZone };
     const extremes = await getSocExtremes({
       prisma,
       datasetVersionId: oflcVersionId,
@@ -595,7 +616,7 @@ export async function lookup(
       explain: { summary: getSummary() },
       geo,
       wages: wagePayload,
-      duties,
+      duties: dutiesWithJobZone,
       extremes,
       warnings: warnings.length ? warnings : undefined,
     };
@@ -614,6 +635,7 @@ export async function lookup(
   });
 
   const duties = soc6 ? await resolveDuties(soc6) : { duties: [] };
+  const dutiesWithJobZone = soc6 ? { ...duties, jobZone } : duties;
 
   return {
     kind: 'soc_extremes',
@@ -625,7 +647,7 @@ export async function lookup(
     featureFlags,
     explain: { summary: getSummary() },
     extremes,
-    duties,
+    duties: dutiesWithJobZone,
     warnings: warnings.length ? warnings : undefined,
   };
 }

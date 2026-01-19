@@ -10,13 +10,16 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
 } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { put } from '@vercel/blob/client';
 
 import { parseFullAddress, type ParsedAddress } from '../src/lib/address';
+import { useTranscriptState, type TranscriptEntry, type TranscriptScoreDebug } from './transcript-state';
 import styles from './page.module.css';
 
 type DetectedMode = 'address' | 'address_soc' | 'soc' | 'none';
-type OccupationSuggestion = { onetCode: string; title: string };
+type OccupationSuggestion = { onetCode: string; title: string; jobZone?: number | null };
 type AddressFields = {
   line1: string;
   line2: string;
@@ -27,6 +30,7 @@ type AddressFields = {
 type SocRecommendItem = {
   matchedOnetCode: string;
   matchedOnetTitle: string | null;
+  jobZone: number | null;
   socCode: string;
   socTitle: string | null;
   similarity: number;
@@ -56,10 +60,87 @@ type SocRecommendResponse = {
     };
   };
 };
+type CombinedMatchItem = {
+  onet_code: string;
+  onet_title?: string | null;
+  job_zone?: number | null;
+  duties?: string[];
+  duties_count?: number;
+  duties_available?: boolean;
+  final_rank: number;
+  source: 'duties' | 'skills';
+  rrf_score?: number;
+  duties_rank?: number | null;
+  skills_rank?: number | null;
+  skills_gate?: 'pass' | 'fail' | 'skipped';
+  skills_score?: number | null;
+  skills_coverage?: number | null;
+  skills_match?: number | null;
+  skills_evidence?: {
+    course_count: number;
+    top_matches: Array<{
+      course_title: string;
+      skill_name: string;
+      taxonomy_type: string;
+      skill_weight: number;
+    }>;
+  } | null;
+  similarity?: number;
+  confidence?: number;
+  score?: number;
+  coverage?: number;
+  match?: number;
+};
+type CombinedMatchResponse = {
+  results: CombinedMatchItem[];
+  fusion_applied: boolean;
+  duties_meta?: {
+    input_truncated?: boolean;
+    input_length?: number;
+  } | null;
+};
+type TranscriptUploadTarget = {
+  provider: 'vercel_blob' | 'local';
+  uploadUrl?: string;
+  clientToken?: string;
+  pathname?: string;
+  headers?: Record<string, string>;
+  method?: string;
+  maxBytes: number;
+  storageUrl?: string | null;
+};
+type TranscriptCreateResponse = {
+  transcriptId: string;
+  upload: TranscriptUploadTarget;
+};
 const confirmationStorageKey = 'lookupConfirmation';
 const onetCodePattern = /^\s*(\d{2}-\d{4}(?:\.\d{2})?)\b/;
-const dutiesPreviewCount = 6;
+const dutiesPreviewCount = 7;
 const PO_BOX_RE = /\bP\.?\s*O\.?\s*Box\b/i;
+const READY_TRANSCRIPT_STATUSES = new Set(['READY', 'NEEDS_REVIEW']);
+
+async function readJsonResponse<T>(res: Response): Promise<T> {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    return (await res.json()) as T;
+  }
+  const text = await res.text();
+  const snippet = text.replace(/\s+/g, ' ').slice(0, 160);
+  const suffix = snippet ? ` Response: ${snippet}` : '';
+  throw new Error(`Server returned non-JSON response (${res.status}).${suffix}`);
+}
+
+const TRANSCRIPT_STAGE_LABELS = [
+  { key: 'upload', label: 'Upload' },
+  { key: 'ocr', label: 'OCR' },
+  { key: 'parse', label: 'Parse' },
+  { key: 'score', label: 'Score' },
+] as const;
+
+const UPLOAD_ESTIMATE_MS = 8_000;
+const PARSE_ESTIMATE_TEXT_MS = 18_000;
+const PARSE_ESTIMATE_OCR_MS = 60_000;
+const SCORE_ESTIMATE_MS = 8_000;
 
 const STATE_OPTIONS = [
   { code: 'AL', name: 'Alabama' },
@@ -276,8 +357,11 @@ export default function HomePage() {
   const [stateSuggestionsOpen, setStateSuggestionsOpen] = useState(false);
   const [stateHighlightIndex, setStateHighlightIndex] = useState(-1);
   const recommenderEnabled = process.env.NEXT_PUBLIC_FEATURE_SOC_RECOMMENDER === 'true';
+  const skillsMatchingEnabled = process.env.NEXT_PUBLIC_FEATURE_SKILL_MATCHING === 'true';
   const [dutiesInput, setDutiesInput] = useState('');
   const [recommendations, setRecommendations] = useState<SocRecommendItem[]>([]);
+  const [combinedResults, setCombinedResults] = useState<CombinedMatchItem[]>([]);
+  const [recommendMode, setRecommendMode] = useState<'duties' | 'combined'>('duties');
   const [recommendLoading, setRecommendLoading] = useState(false);
   const [recommendError, setRecommendError] = useState('');
   const [recommendWarnings, setRecommendWarnings] = useState<string[]>([]);
@@ -288,11 +372,21 @@ export default function HomePage() {
     title: string | null;
   } | null>(null);
   const [recommendOpen, setRecommendOpen] = useState(true);
+  const [transcriptFiles, setTranscriptFiles] = useState<File[]>([]);
+  const { transcripts, setTranscripts } = useTranscriptState();
+  const [uploadBatchTotal, setUploadBatchTotal] = useState(0);
+  const [uploadBatchBaseline, setUploadBatchBaseline] = useState(0);
+  const [transcriptError, setTranscriptError] = useState('');
+  const [transcriptMessage, setTranscriptMessage] = useState('');
+  const [transcriptUploading, setTranscriptUploading] = useState(false);
+  const [, setTranscriptTick] = useState(0);
   const [socInputFlash, setSocInputFlash] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const previewCount = isMobile ? 6 : dutiesPreviewCount;
   const stateListboxId = useId();
   const socListboxId = useId();
   const socInputRef = useRef<HTMLInputElement | null>(null);
+  const transcriptInputRef = useRef<HTMLInputElement | null>(null);
   const socInputFlashTimer = useRef<number | null>(null);
   const lastUserScrollRef = useRef(0);
 
@@ -308,6 +402,47 @@ export default function HomePage() {
   };
 
   const addressMeta = useMemo(() => computeAddressMeta(addressDetails), [addressDetails]);
+  const recommendPanelEnabled = recommenderEnabled || skillsMatchingEnabled;
+  const readyTranscriptIds = useMemo(
+    () =>
+      skillsMatchingEnabled
+        ? transcripts
+            .filter((entry) => READY_TRANSCRIPT_STATUSES.has(entry.status ?? ''))
+            .map((entry) => entry.id)
+        : [],
+    [skillsMatchingEnabled, transcripts],
+  );
+  const pendingQueueIds = useMemo(
+    () =>
+      skillsMatchingEnabled
+        ? transcripts
+            .filter(
+              (entry) =>
+                !entry.status ||
+                ['CREATED', 'UPLOADED', 'PARSING'].includes(entry.status),
+            )
+            .map((entry) => entry.id)
+        : [],
+    [skillsMatchingEnabled, transcripts],
+  );
+  const pendingTranscriptIds = pendingQueueIds;
+  const hasAnyTranscript =
+    skillsMatchingEnabled && (transcripts.length > 0 || uploadBatchTotal > 0);
+  const hasReadyTranscript = skillsMatchingEnabled && readyTranscriptIds.length > 0;
+  const hasPendingTranscript = skillsMatchingEnabled && pendingTranscriptIds.length > 0;
+  const hasActionableContent =
+    Boolean(dutiesInput.trim()) || (skillsMatchingEnabled && hasReadyTranscript);
+  const recommendDisabled =
+    recommendLoading || hasPendingTranscript || !hasActionableContent;
+  const recommendDisabledReason = recommendLoading
+    ? null
+    : hasPendingTranscript
+      ? 'Transcript is still processing. Please wait.'
+      : !hasActionableContent
+        ? skillsMatchingEnabled
+          ? 'Paste job duties or upload a parsed transcript to continue.'
+          : 'Paste job duties to continue.'
+        : null;
   const trimmedSoc = socCode.trim();
   const hasAddressInput = addressMeta.hasAny;
   const hasAddress = Boolean(addressDetails.city.trim() && addressMeta.normalizedState);
@@ -564,6 +699,14 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (!skillsMatchingEnabled || typeof window === 'undefined') {
+      return;
+    }
+    sessionStorage.removeItem('transcriptIds');
+    sessionStorage.removeItem('transcriptId');
+  }, [skillsMatchingEnabled]);
+
+  useEffect(() => {
     if (response?.kind === 'geo_needs_confirmation' && lastRequest) {
       sessionStorage.setItem(
         confirmationStorageKey,
@@ -579,7 +722,7 @@ export default function HomePage() {
   }, [response?.duties]);
 
   useEffect(() => {
-    if (!recommenderEnabled || typeof window === 'undefined') {
+    if (!recommendPanelEnabled || typeof window === 'undefined') {
       return;
     }
     const media = window.matchMedia('(max-width: 720px)');
@@ -597,10 +740,10 @@ export default function HomePage() {
         media.removeListener(update);
       }
     };
-  }, [recommenderEnabled]);
+  }, [recommendPanelEnabled]);
 
   useEffect(() => {
-    if (!recommenderEnabled || typeof window === 'undefined') {
+    if (!recommendPanelEnabled || typeof window === 'undefined') {
       return;
     }
     const params = new URLSearchParams(window.location.search);
@@ -608,7 +751,7 @@ export default function HomePage() {
     if (focus) {
       setRecommendSelected({ code: focus, title: null });
     }
-  }, [recommenderEnabled]);
+  }, [recommendPanelEnabled]);
 
   useEffect(() => {
     if (!recommendSelected) return;
@@ -814,21 +957,20 @@ export default function HomePage() {
     }
   };
 
-  const handleRecommendSelect = (item: SocRecommendItem) => {
-    const title = item.matchedOnetTitle ?? item.socTitle ?? null;
+  const selectRecommendedOnet = (onetCode: string, title: string | null) => {
     if (title) {
-      setSocInput(formatOccupationLabel({ onetCode: item.matchedOnetCode, title }));
+      setSocInput(formatOccupationLabel({ onetCode, title }));
     } else {
-      setSocInput(item.matchedOnetCode);
+      setSocInput(onetCode);
     }
-    setSocCode(item.matchedOnetCode);
+    setSocCode(onetCode);
     setSocSelectedTitle(title);
     setSocSuggestions([]);
     setSocSuggestionsOpen(false);
     setSocSuggestionsError('');
     setSocHighlightIndex(-1);
-    setRecommendSelected({ code: item.matchedOnetCode, title });
-    updateFocusOnetParam(item.matchedOnetCode);
+    setRecommendSelected({ code: onetCode, title });
+    updateFocusOnetParam(onetCode);
     setRecommendOpen(false);
     if (socInputFlashTimer.current) {
       window.clearTimeout(socInputFlashTimer.current);
@@ -843,12 +985,425 @@ export default function HomePage() {
     }, 1400);
   };
 
+  const handleRecommendSelect = (item: SocRecommendItem) => {
+    const title = item.matchedOnetTitle ?? item.socTitle ?? null;
+    selectRecommendedOnet(item.matchedOnetCode, title);
+  };
+
+  const addTranscriptEntry = (entry: TranscriptEntry) => {
+    setTranscripts((prev) => {
+      if (prev.some((item) => item.id === entry.id)) {
+        return prev.map((item) => (item.id === entry.id ? { ...item, ...entry } : item));
+      }
+      return [...prev, entry];
+    });
+  };
+
+  const updateTranscriptEntry = (id: string, patch: Partial<TranscriptEntry>) => {
+    setTranscripts((prev) =>
+      prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+    );
+  };
+
+  const getStageStatus = (
+    entry: TranscriptEntry,
+    stage: (typeof TRANSCRIPT_STAGE_LABELS)[number]['key'],
+  ) => {
+    const status = entry.status ?? '';
+    const uploadDone =
+      Boolean(entry.uploadEndedAt) || ['PARSING', 'READY', 'NEEDS_REVIEW', 'FAILED'].includes(status);
+    const uploadActive = !uploadDone && Boolean(entry.uploadStartedAt);
+    const parseActive = status === 'PARSING';
+    const parseDone = Boolean(entry.parseEndedAt) || ['READY', 'NEEDS_REVIEW', 'FAILED'].includes(status);
+    const ocrUsed = entry.parseUsedPath === 'ocr';
+
+    if (stage === 'upload') {
+      if (uploadDone) return 'done';
+      if (uploadActive) return 'active';
+      return 'pending';
+    }
+
+    if (stage === 'ocr') {
+      if (ocrUsed) {
+        if (parseDone) return 'done';
+        if (parseActive) return 'active';
+        return 'pending';
+      }
+      if (parseDone) return 'skipped';
+      return 'pending';
+    }
+
+    if (stage === 'parse') {
+      if (parseDone) return 'done';
+      if (parseActive) return 'active';
+      return 'pending';
+    }
+
+    if (stage === 'score') {
+      if (entry.scoreStatus === 'skipped') return 'skipped';
+      if (entry.scoreStatus === 'failed') return 'failed';
+      if (entry.scoreStatus === 'done') return 'done';
+      if (entry.scoreStartedAt && !entry.scoreEndedAt) return 'active';
+      return 'pending';
+    }
+
+    return 'pending';
+  };
+
+  const formatEta = (ms: number) => {
+    const seconds = Math.max(5, Math.ceil(ms / 1000));
+    return `${seconds}s`;
+  };
+
+  const formatDebugScore = (value?: number) => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+    return value.toFixed(3);
+  };
+
+  const formatDebugReason = (reason?: string) => {
+    if (!reason) return '';
+    switch (reason) {
+      case 'no_skill_evidence':
+        return 'No skill evidence from model';
+      case 'no_embedding':
+        return 'Missing embedding';
+      case 'generic_title':
+        return 'Generic course title';
+      case 'failed_course':
+        return 'Failed by grade rule';
+      default:
+        return reason;
+    }
+  };
+
+  const getTranscriptEta = (entry: TranscriptEntry) => {
+    if (entry.error) return null;
+    const now = Date.now();
+
+    if (entry.scoreStartedAt && !entry.scoreEndedAt) {
+      const remaining = SCORE_ESTIMATE_MS - (now - entry.scoreStartedAt);
+      return `Estimated time remaining: ~${formatEta(Math.max(remaining, 0))}`;
+    }
+
+    if (entry.status === 'PARSING' && entry.parseStartedAt) {
+      const estimate =
+        entry.parseUsedPath === 'ocr'
+          ? PARSE_ESTIMATE_OCR_MS
+          : entry.parseUsedPath === 'pdf_text'
+            ? PARSE_ESTIMATE_TEXT_MS
+            : PARSE_ESTIMATE_OCR_MS;
+      const remaining = estimate - (now - entry.parseStartedAt);
+      return `Estimated time remaining: ~${formatEta(Math.max(remaining, 0))}`;
+    }
+
+    if (entry.uploadStartedAt && !entry.uploadEndedAt) {
+      const remaining = UPLOAD_ESTIMATE_MS - (now - entry.uploadStartedAt);
+      return `Estimated time remaining: ~${formatEta(Math.max(remaining, 0))}`;
+    }
+
+    return null;
+  };
+
+  const refreshTranscriptStatus = async (id: string) => {
+    try {
+      const res = await fetch(`/api/v1/transcripts/${id}`, { credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) return;
+      const status = data?.transcript?.status ?? null;
+      updateTranscriptEntry(id, { status });
+    } catch {
+      updateTranscriptEntry(id, { status: null });
+    }
+  };
+
+  useEffect(() => {
+    if (pendingTranscriptIds.length === 0) return;
+    const timer = window.setInterval(() => {
+      pendingTranscriptIds.forEach((id) => {
+        void refreshTranscriptStatus(id);
+      });
+      setTranscriptTick((prev) => prev + 1);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [pendingTranscriptIds.join('|')]);
+
+  const handleTranscriptFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (transcriptUploading) {
+      setTranscriptError('Upload in progress. Please wait.');
+      return;
+    }
+    setUploadBatchBaseline(transcripts.length);
+    setUploadBatchTotal(files.length);
+    setTranscriptFiles(files);
+    setTranscriptError('');
+    setTranscriptMessage('');
+    if (files.length > 0) {
+      void handleTranscriptUpload(files);
+    }
+  };
+
+  const fetchJsonStep = async <T,>(
+    step: string,
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<T> => {
+    let response: Response;
+    try {
+      response = await fetch(input, init);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${step} request failed: ${message}`);
+    }
+
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const text = await response.text();
+        if (text) {
+          try {
+            const parsed = JSON.parse(text) as { error?: string; message?: string };
+            detail = parsed.error ?? parsed.message ?? text;
+          } catch {
+            detail = text;
+          }
+        }
+      } catch {
+        detail = '';
+      }
+      const suffix = detail ? `: ${detail}` : '';
+      throw new Error(`${step} failed${suffix}`);
+    }
+
+    try {
+      return (await response.json()) as T;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${step} response parse failed: ${message}`);
+    }
+  };
+
+  const computeTranscriptSkills = async (transcriptId: string, messagePrefix?: string) => {
+    updateTranscriptEntry(transcriptId, {
+      scoreStartedAt: Date.now(),
+      scoreEndedAt: undefined,
+      scoreStatus: undefined,
+      error: undefined,
+      message: 'Computing skills evidence...',
+    });
+
+    try {
+      const computeData = await fetchJsonStep<{
+        evidenceCount?: number;
+        debug?: TranscriptScoreDebug;
+      }>(
+        'Compute skills',
+        `/api/v1/transcripts/${transcriptId}/compute-ska?debug=1`,
+        {
+          method: 'POST',
+          credentials: 'include',
+        },
+      );
+      const evidenceCount = computeData?.evidenceCount ?? 0;
+      updateTranscriptEntry(transcriptId, {
+        message: `${messagePrefix ? `${messagePrefix} ` : ''}Skills evidence: ${evidenceCount}.`,
+        scoreEndedAt: Date.now(),
+        scoreStatus: 'done',
+        scoreEvidenceCount: evidenceCount,
+        scoreDebug: computeData?.debug ?? undefined,
+      });
+      return evidenceCount;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Skills evidence failed.';
+      updateTranscriptEntry(transcriptId, {
+        error: message,
+        scoreEndedAt: Date.now(),
+        scoreStatus: 'failed',
+      });
+      throw error;
+    }
+  };
+
+  const transcriptStatusTotal =
+    uploadBatchTotal > 0 ? uploadBatchBaseline + uploadBatchTotal : transcripts.length;
+
+  const handleTranscriptUpload = async (filesOverride?: File[]) => {
+    const filesToUpload = filesOverride ?? transcriptFiles;
+    if (filesToUpload.length === 0) {
+      if (!filesOverride) {
+        setTranscriptError('Select one or more PDF files to upload.');
+      }
+      return;
+    }
+    setTranscriptUploading(true);
+    setTranscriptError('');
+    setTranscriptMessage('');
+
+    const errors: string[] = [];
+    let successCount = 0;
+
+    for (const file of filesToUpload) {
+      let transcriptId: string | null = null;
+      try {
+        const createData = await fetchJsonStep<TranscriptCreateResponse>(
+          'Create transcript',
+          '/api/v1/transcripts/create',
+          {
+            method: 'POST',
+            credentials: 'include',
+          },
+        );
+
+        transcriptId = createData.transcriptId;
+        addTranscriptEntry({
+          id: transcriptId,
+          name: file.name,
+          status: 'CREATED',
+          uploadStartedAt: Date.now(),
+        });
+
+        const upload = createData.upload;
+        if (upload.maxBytes && file.size > upload.maxBytes) {
+          throw new Error('Selected file exceeds the upload size limit.');
+        }
+
+        let storageUrl = upload.storageUrl ?? null;
+        if (upload.provider === 'vercel_blob') {
+          if (!upload.clientToken || !upload.pathname) {
+            throw new Error('Upload token missing.');
+          }
+          const result = await put(upload.pathname, file, {
+            access: 'public',
+            token: upload.clientToken,
+            contentType: file.type || 'application/pdf',
+          });
+          storageUrl = result.url;
+        } else if (upload.uploadUrl) {
+          const uploadData = await fetchJsonStep<{ storageUrl?: string }>(
+            'Upload file',
+            upload.uploadUrl,
+            {
+              method: upload.method ?? 'PUT',
+              headers: upload.headers ?? {},
+              body: file,
+              credentials: 'include',
+            },
+          );
+          storageUrl = uploadData?.storageUrl ?? storageUrl;
+        } else {
+          throw new Error('Upload target missing.');
+        }
+
+        await fetchJsonStep(
+          'Finalize upload',
+          `/api/v1/transcripts/${transcriptId}/complete-upload`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ storageUrl }),
+          },
+        );
+
+        updateTranscriptEntry(transcriptId, {
+          status: 'UPLOADED',
+          message: 'Upload complete. Parsing transcript...',
+          error: undefined,
+          uploadEndedAt: Date.now(),
+        });
+
+        updateTranscriptEntry(transcriptId, { status: 'PARSING', parseStartedAt: Date.now() });
+
+        const processData = await fetchJsonStep<{ usedPath?: string; courseCount?: number }>(
+          'Parse transcript',
+          `/api/v1/transcripts/${transcriptId}/process`,
+          {
+            method: 'POST',
+            credentials: 'include',
+          },
+        );
+
+        await refreshTranscriptStatus(transcriptId);
+        updateTranscriptEntry(transcriptId, {
+          message: `Parsing complete${processData?.usedPath === 'ocr' ? ' (OCR)' : ''}. Courses detected: ${processData?.courseCount ?? 0}.`,
+          parseEndedAt: Date.now(),
+          parseUsedPath: processData?.usedPath ?? null,
+        });
+
+        if (processData?.courseCount > 0) {
+          try {
+            await computeTranscriptSkills(transcriptId, 'Parsing complete.');
+          } catch {
+            // Score failure is already reflected in the transcript entry.
+          }
+        } else {
+          updateTranscriptEntry(transcriptId, {
+            scoreEndedAt: Date.now(),
+            scoreStatus: 'skipped',
+          });
+        }
+
+        successCount += 1;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Transcript upload failed.';
+        if (transcriptId) {
+          updateTranscriptEntry(transcriptId, {
+            error: message,
+            status: 'FAILED',
+            parseEndedAt: Date.now(),
+            scoreEndedAt: Date.now(),
+            scoreStatus: 'failed',
+          });
+        } else {
+          errors.push(`${file.name}: ${message}`);
+        }
+      }
+    }
+
+    setTranscriptFiles([]);
+    if (transcriptInputRef.current) {
+      transcriptInputRef.current.value = '';
+    }
+
+    if (errors.length) {
+      setTranscriptError(errors.join(' '));
+    }
+    if (successCount > 0) {
+      setTranscriptMessage(
+        `Uploaded ${successCount} transcript${successCount > 1 ? 's' : ''}.`,
+      );
+    }
+
+    setUploadBatchTotal(0);
+    setTranscriptUploading(false);
+  };
+
   const handleRecommendSubmit = async () => {
-    if (!recommenderEnabled) return;
     const trimmed = dutiesInput.trim();
-    if (!trimmed) {
-      setRecommendError('Paste job duties to get recommendations.');
+    const hasTranscript = skillsMatchingEnabled && hasAnyTranscript;
+    if (hasPendingTranscript) {
+      setRecommendError('Transcript is still processing. Please wait.');
       setRecommendations([]);
+      setCombinedResults([]);
+      return;
+    }
+    const pendingTranscripts = transcripts.filter(
+      (entry) => !entry.status || ['CREATED', 'UPLOADED', 'PARSING'].includes(entry.status),
+    );
+    if (!trimmed && !hasTranscript) {
+      setRecommendError(
+        skillsMatchingEnabled
+          ? 'Paste job duties or upload a transcript to get recommendations.'
+          : 'Paste job duties to get recommendations.',
+      );
+      setRecommendations([]);
+      setCombinedResults([]);
+      return;
+    }
+    if (skillsMatchingEnabled && !trimmed && !hasReadyTranscript) {
+      setRecommendError('Transcript not parsed yet. Please wait for processing to finish.');
+      setRecommendations([]);
+      setCombinedResults([]);
       return;
     }
     setRecommendLoading(true);
@@ -857,39 +1412,119 @@ export default function HomePage() {
     setRecommendMeta(null);
     const localWarnings: string[] = [];
     try {
-      const payload: Record<string, unknown> = { dutiesText: trimmed };
-      const { areaCode, warning } = await resolveRecommendAreaCode();
-      if (areaCode) {
-        payload.areaCode = areaCode;
-      }
-      if (warning) {
-        localWarnings.push(warning);
-      }
-      if (response?.wages?.wageYear) {
-        payload.wageYear = response.wages.wageYear;
-      }
-      if (typeof response?.wages?.isAcwia === 'boolean') {
-        payload.isAcwia = response.wages.isAcwia;
-      }
+      if (hasReadyTranscript && skillsMatchingEnabled) {
+        if (pendingTranscripts.length > 0) {
+          localWarnings.push(
+            'Some transcripts are still processing. Only parsed transcripts were used.',
+          );
+        }
+        const reviewEntries = transcripts.filter((entry) => entry.status === 'NEEDS_REVIEW');
+        if (reviewEntries.length > 0) {
+          localWarnings.push('Some transcripts need review; results may be less reliable.');
+        }
+        const readyEntries = transcripts.filter((entry) =>
+          READY_TRANSCRIPT_STATUSES.has(entry.status ?? ''),
+        );
+        let skillsEvidenceTotal = readyEntries.reduce(
+          (sum, entry) =>
+            sum + (typeof entry.scoreEvidenceCount === 'number' ? entry.scoreEvidenceCount : 0),
+          0,
+        );
+        const needsCompute = readyEntries.filter(
+          (entry) =>
+            entry.scoreStatus === 'failed' || typeof entry.scoreEvidenceCount !== 'number',
+        );
 
-      const res = await fetch('/api/v1/soc/recommend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      const data = (await res.json()) as SocRecommendResponse;
-      if (!res.ok) {
-        throw new Error((data as any)?.error ?? 'Recommendation failed.');
+        if (needsCompute.length > 0) {
+          for (const entry of needsCompute) {
+            try {
+              const evidenceCount = await computeTranscriptSkills(entry.id);
+              skillsEvidenceTotal += evidenceCount;
+            } catch {
+              localWarnings.push('Some transcripts failed skill scoring.');
+            }
+          }
+        }
+
+        if (!trimmed && skillsEvidenceTotal === 0) {
+          setRecommendError(
+            'No skills evidence extracted yet. Open the transcript review to refine summaries, then retry.',
+          );
+          setRecommendations([]);
+          setCombinedResults([]);
+          if (localWarnings.length) {
+            setRecommendWarnings(localWarnings);
+          }
+          return;
+        }
+        if (trimmed && skillsEvidenceTotal === 0) {
+          localWarnings.push(
+            'No skills evidence extracted yet. Recommendations will use duties only.',
+          );
+        }
+        const payload: Record<string, unknown> = {
+          transcript_ids: readyTranscriptIds,
+        };
+        if (trimmed) {
+          payload.dutiesText = trimmed;
+        }
+        const res = await fetch('/api/v1/match/combined', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        const data = (await readJsonResponse(res)) as CombinedMatchResponse;
+        if (!res.ok) {
+          throw new Error((data as any)?.error ?? 'Recommendation failed.');
+        }
+        setCombinedResults(Array.isArray(data.results) ? data.results : []);
+        setRecommendations([]);
+        setRecommendMode('combined');
+        setRecommendExpanded(null);
+      } else {
+        const payload: Record<string, unknown> = { dutiesText: trimmed };
+        const { areaCode, warning } = await resolveRecommendAreaCode();
+        if (areaCode) {
+          payload.areaCode = areaCode;
+        }
+        if (warning) {
+          localWarnings.push(warning);
+        }
+        if (response?.wages?.wageYear) {
+          payload.wageYear = response.wages.wageYear;
+        }
+        if (typeof response?.wages?.isAcwia === 'boolean') {
+          payload.isAcwia = response.wages.isAcwia;
+        }
+
+        const res = await fetch('/api/v1/soc/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        const data = (await readJsonResponse(res)) as SocRecommendResponse;
+        if (!res.ok) {
+          throw new Error((data as any)?.error ?? 'Recommendation failed.');
+        }
+        setRecommendations(Array.isArray(data.items) ? data.items : []);
+        setCombinedResults([]);
+        setRecommendMode('duties');
+        const apiWarnings = Array.isArray(data.warnings) ? data.warnings : [];
+        setRecommendWarnings([...localWarnings, ...apiWarnings]);
+        setRecommendMeta(data.meta ?? null);
+        setRecommendExpanded(null);
       }
-      setRecommendations(Array.isArray(data.items) ? data.items : []);
-      const apiWarnings = Array.isArray(data.warnings) ? data.warnings : [];
-      setRecommendWarnings([...localWarnings, ...apiWarnings]);
-      setRecommendMeta(data.meta ?? null);
-      setRecommendExpanded(null);
     } catch (err) {
-      setRecommendError(err instanceof Error ? err.message : 'Recommendation failed.');
+      const rawMessage = err instanceof Error ? err.message : 'Recommendation failed.';
+      const message =
+        rawMessage === 'SKILLS_NOT_READY'
+          ? 'No skills evidence extracted yet. Open the transcript review to refine summaries, then retry.'
+          : rawMessage;
+      setRecommendError(message);
       setRecommendations([]);
+      setCombinedResults([]);
       if (localWarnings.length) {
         setRecommendWarnings(localWarnings);
       }
@@ -1123,6 +1758,7 @@ export default function HomePage() {
     const hasGeo = Boolean(response.geo?.geocode || response.geo?.area || response.geo?.cbsa);
     const hasWages = Boolean(response.wages?.level1);
     const hasDuties = Boolean(response.duties?.duties?.length);
+    const dutiesJobZone = response.duties?.jobZone ?? null;
     const hasExtremes = Boolean(response.extremes);
     const formatAreaLabel = (area?: {
       displayName?: string | null;
@@ -1375,7 +2011,12 @@ export default function HomePage() {
 
           <div className={`${styles.card} ${styles.spanTwo}`}>
             <div className={styles.cardHeaderRow}>
-              <h3 className={styles.cardTitle}>Tasks</h3>
+              <div className={styles.cardTitleRow}>
+                <h3 className={`${styles.cardTitle} ${styles.cardTitleInline}`}>Tasks</h3>
+                {typeof dutiesJobZone === 'number' ? (
+                  <span className={styles.jobZoneBadge}>Job Zone {dutiesJobZone}</span>
+                ) : null}
+              </div>
               <div className={styles.cardHeaderActions}>
                 {onetSummaryUrl ? (
                   <a
@@ -1755,7 +2396,14 @@ export default function HomePage() {
                                     role="option"
                                     aria-selected={isActive}
                                   >
-                                    <span className={styles.suggestionCode}>{entry.onetCode}</span>
+                                    <span className={styles.suggestionMeta}>
+                                      <span className={styles.suggestionCode}>{entry.onetCode}</span>
+                                      {entry.jobZone ? (
+                                        <span className={styles.jobZoneBadge}>
+                                          Job Zone {entry.jobZone}
+                                        </span>
+                                      ) : null}
+                                    </span>
                                     <span className={styles.suggestionTitle}>{entry.title}</span>
                                   </button>
                                 </li>
@@ -1778,7 +2426,7 @@ export default function HomePage() {
               ) : null}
             </label>
 
-            {recommenderEnabled ? (
+            {recommendPanelEnabled ? (
               recommendOpen ? (
                 <div className={`${styles.recommenderPanel} ${styles.formSpan}`} data-testid="soc-recommender">
                   <div className={styles.recommenderHeader}>
@@ -1788,7 +2436,9 @@ export default function HomePage() {
                         <span className={styles.recommenderTag}>Top 6</span>
                       </div>
                       <div className={styles.helper}>
-                        Paste job duties and click Recommend to get Top 6 O*NET codes.
+                        {skillsMatchingEnabled
+                          ? 'Paste job duties and/or upload a transcript to get Top 6 O*NET codes.'
+                          : 'Paste job duties to get Top 6 O*NET codes.'}
                       </div>
                     </div>
                     <button
@@ -1808,16 +2458,207 @@ export default function HomePage() {
                     placeholder="Paste job duties here"
                     data-testid="soc-recommender-input"
                   />
+                  {skillsMatchingEnabled ? (
+                    <div className={styles.transcriptUpload} data-testid="transcript-upload">
+                      <div className={styles.transcriptUploadRow}>
+                        <label className={styles.transcriptUploadLabel}>
+                          Transcript PDF
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            className={styles.transcriptUploadInput}
+                            multiple
+                            ref={transcriptInputRef}
+                            onChange={handleTranscriptFileChange}
+                            disabled={transcriptUploading}
+                          />
+                        </label>
+                      </div>
+                      {transcriptFiles.length ? (
+                        <div className={styles.transcriptSelection}>
+                          <span>Selected {transcriptFiles.length} file(s):</span>
+                          <ul className={styles.transcriptFileList}>
+                            {transcriptFiles.map((file) => (
+                              <li key={`${file.name}-${file.size}`} className={styles.transcriptFileItem}>
+                                {file.name}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      <div className={styles.transcriptStatusRow}>
+                        <span className={styles.transcriptStatusLabel}>Transcript status:</span>
+                        <span>
+                          {hasAnyTranscript
+                            ? `${readyTranscriptIds.length}/${transcriptStatusTotal} parsed`
+                            : 'not uploaded'}
+                        </span>
+                      </div>
+                      {transcripts.length ? (
+                        <div className={styles.transcriptList}>
+                          {transcripts.map((entry) => {
+                            const isPending =
+                              !entry.status ||
+                              ['CREATED', 'UPLOADED', 'PARSING'].includes(entry.status);
+                            const isScoring = Boolean(entry.scoreStartedAt && !entry.scoreEndedAt);
+                            const statusLabel = entry.status
+                              ? entry.status.replace(/_/g, ' ')
+                              : 'pending';
+                            const displayStatus = isScoring ? 'scoring' : statusLabel;
+                            const etaLabel = getTranscriptEta(entry);
+                            const queueIndex = pendingQueueIds.indexOf(entry.id);
+                            const queueLabel =
+                              queueIndex >= 0 && pendingQueueIds.length > 1
+                                ? `Queue position: ${queueIndex + 1}/${pendingQueueIds.length}`
+                                : null;
+                            return (
+                            <div key={entry.id} className={styles.transcriptCard}>
+                              <div className={styles.transcriptCardHeader}>
+                                <span className={styles.transcriptCardName}>
+                                  {entry.name ?? `Transcript ${entry.id.slice(0, 8)}`}
+                                </span>
+                                <span
+                                  className={`${styles.transcriptCardStatus} ${
+                                    isPending || isScoring ? styles.transcriptCardStatusPending : ''
+                                  }`}
+                                >
+                                  {displayStatus}
+                                  {isPending || isScoring ? (
+                                    <span className={styles.transcriptStatusDot} aria-hidden />
+                                  ) : null}
+                                </span>
+                              </div>
+                              {entry.message ? (
+                                <div className={styles.transcriptCardMeta}>{entry.message}</div>
+                              ) : null}
+                              {entry.error ? (
+                                <div className={styles.error}>{entry.error}</div>
+                              ) : null}
+                              {isPending ? (
+                                <div className={styles.transcriptPendingHint}>
+                                  Processing<span className={styles.transcriptDots} />
+                                </div>
+                              ) : isScoring ? (
+                                <div className={styles.transcriptPendingHint}>
+                                  Computing skills<span className={styles.transcriptDots} />
+                                </div>
+                              ) : null}
+                              {isPending || isScoring ? (
+                                <div className={styles.transcriptProgress} aria-hidden="true" />
+                              ) : null}
+                              <div className={styles.transcriptStages}>
+                                {TRANSCRIPT_STAGE_LABELS.map((stage) => {
+                                  const stageStatus = getStageStatus(entry, stage.key);
+                                  const stageClass =
+                                    stageStatus === 'done'
+                                      ? styles.transcriptStageDone
+                                      : stageStatus === 'active'
+                                        ? styles.transcriptStageActive
+                                        : stageStatus === 'skipped'
+                                          ? styles.transcriptStageSkipped
+                                          : stageStatus === 'failed'
+                                            ? styles.transcriptStageFailed
+                                            : styles.transcriptStagePending;
+                                  return (
+                                    <div
+                                      key={stage.key}
+                                      className={`${styles.transcriptStage} ${stageClass}`}
+                                    >
+                                      <span className={styles.transcriptStageDot} aria-hidden />
+                                      <span>{stage.label}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {etaLabel ? (
+                                <div className={styles.transcriptEta}>{etaLabel}</div>
+                              ) : null}
+                              {queueLabel ? (
+                                <div className={styles.transcriptQueue}>{queueLabel}</div>
+                              ) : null}
+                              {entry.scoreDebug ? (
+                                <details className={styles.transcriptDebug}>
+                                  <summary>Skill scoring debug</summary>
+                                  <div className={styles.transcriptDebugSummary}>
+                                    Courses: {entry.scoreDebug.totalCourses} total ·{' '}
+                                    {entry.scoreDebug.eligibleCourses} eligible ·{' '}
+                                    {entry.scoreDebug.scoredCourses} embedded · Evidence:{' '}
+                                    {entry.scoreEvidenceCount ?? 0}
+                                  </div>
+                                  <div className={styles.transcriptDebugList}>
+                                    {entry.scoreDebug.courses.map((course) => {
+                                      const reason = formatDebugReason(course.reason);
+                                      const statusLabel =
+                                        course.status === 'matched'
+                                          ? `matched (${course.matchCount ?? 0})`
+                                          : course.status.replace('_', ' ');
+                                      const thresholdLabel =
+                                        course.thresholdUsed && course.thresholdUsed !== 'none'
+                                          ? ` • ${course.thresholdUsed}`
+                                          : '';
+                                      const detailParts = [
+                                        statusLabel + thresholdLabel,
+                                        reason,
+                                      ].filter(Boolean);
+                                      const topSkill = course.topSkill
+                                        ? `Top skill: ${course.topSkill.name} (${course.topSkill.taxonomyType})`
+                                        : 'Top skill: —';
+                                      return (
+                                        <div
+                                          key={`${entry.id}-${course.courseKey}`}
+                                          className={styles.transcriptDebugItem}
+                                        >
+                                          <div className={styles.transcriptDebugTitle}>
+                                            {course.title}
+                                          </div>
+                                          <div className={styles.transcriptDebugMeta}>
+                                            {detailParts.join(' • ')}
+                                          </div>
+                                          <div className={styles.transcriptDebugMeta}>
+                                            Max score: {formatDebugScore(course.maxScore)} •{' '}
+                                            {topSkill}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </details>
+                              ) : null}
+                              {entry.status === 'READY' || entry.status === 'NEEDS_REVIEW' ? (
+                                <Link className={styles.transcriptLink} href={`/transcripts/${entry.id}`}>
+                                  Review transcript
+                                </Link>
+                              ) : (
+                                <span className={styles.transcriptPending}>
+                                  Review available after parsing
+                                </span>
+                              )}
+                            </div>
+                          );
+                          })}
+                        </div>
+                      ) : null}
+                      {transcriptError ? (
+                        <div className={styles.error}>{transcriptError}</div>
+                      ) : null}
+                      {transcriptMessage ? (
+                        <div className={styles.success}>{transcriptMessage}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className={styles.recommenderActions}>
                     <button
                       type="button"
                       className={`${styles.primaryButton} ${styles.recommenderAction}`}
                       onClick={handleRecommendSubmit}
-                      disabled={recommendLoading}
+                      disabled={recommendDisabled}
                       data-testid="soc-recommender-submit"
                     >
                       {recommendLoading ? 'Matching...' : 'Recommend Top 6 O*NET Codes'}
                     </button>
+                    {recommendDisabledReason ? (
+                      <div className={styles.recommenderHint}>{recommendDisabledReason}</div>
+                    ) : null}
                   </div>
                   {recommendError ? (
                     <div className={styles.error} data-testid="soc-recommender-error">
@@ -1850,19 +2691,187 @@ export default function HomePage() {
                       </button>
                     </div>
                   ) : null}
-                  {recommendations.length ? (
+                  {recommendMode === 'combined' ? (
+                    combinedResults.length ? (
+                      <div className={styles.recommenderGrid} data-testid="soc-combined-list">
+                        {combinedResults.map((item) => {
+                          const isSelected = recommendSelected?.code === item.onet_code;
+                          const title = item.onet_title ?? 'Unknown title';
+                          const duties = item.duties ?? [];
+                          const dutiesCount =
+                            typeof item.duties_count === 'number'
+                              ? item.duties_count
+                              : duties.length;
+                          const dutiesAvailable =
+                            typeof item.duties_available === 'boolean'
+                              ? item.duties_available
+                              : dutiesCount > 0;
+                          const hasMoreDuties = dutiesAvailable && dutiesCount > previewCount;
+                          const isExpanded =
+                            !hasMoreDuties || recommendExpanded === item.onet_code;
+                          const showDutiesList = !isMobile || isExpanded;
+                          const dutiesToShow = isExpanded
+                            ? duties
+                            : duties.slice(0, previewCount);
+                          const remainingDuties = Math.max(dutiesCount - previewCount, 0);
+                          return (
+                            <div
+                              key={item.onet_code}
+                              className={styles.recommenderCard}
+                              data-testid="soc-combined-card"
+                            >
+                              <div className={styles.recommenderCardHeader}>
+                                <div>
+                                  <div className={styles.recommenderCode}>{item.onet_code}</div>
+                                  <div className={styles.recommenderTitle}>{title}</div>
+                                  {item.job_zone ? (
+                                    <div className={styles.recommenderJobZone}>
+                                      <span className={styles.jobZoneBadge}>
+                                        Job Zone {item.job_zone}
+                                      </span>
+                                    </div>
+                                  ) : null}
+                                  {item.skills_gate ? (
+                                    <div className={styles.recommenderJobZone}>
+                                      <span
+                                        className={`${styles.skillsGateBadge} ${
+                                          item.skills_gate === 'pass'
+                                            ? styles.skillsGatePass
+                                            : item.skills_gate === 'fail'
+                                              ? styles.skillsGateFail
+                                              : styles.skillsGateSkipped
+                                        }`}
+                                      >
+                                        Skills {item.skills_gate}
+                                      </span>
+                                    </div>
+                                  ) : null}
+                                </div>
+                                {isSelected ? (
+                                  <span className={styles.recommenderSelected}>✓ Selected</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={`${styles.primaryButton} ${styles.recommenderSelect}`}
+                                    onClick={() => {
+                                      selectRecommendedOnet(item.onet_code, item.onet_title ?? null);
+                                    }}
+                                  >
+                                    Select
+                                  </button>
+                                )}
+                              </div>
+                              <div className={styles.recommenderMetaRow}>
+                                <span className={styles.recommenderMetaItem}>
+                                  Rank #{item.final_rank} · {item.source}
+                                </span>
+                                {item.duties_rank !== undefined && item.duties_rank !== null ? (
+                                  <span className={styles.recommenderMetaItem}>
+                                    Duties rank: {item.duties_rank}
+                                  </span>
+                                ) : null}
+                                {item.skills_rank !== undefined && item.skills_rank !== null ? (
+                                  <span className={styles.recommenderMetaItem}>
+                                    Skills rank: {item.skills_rank}
+                                  </span>
+                                ) : null}
+                                {item.rrf_score !== undefined ? (
+                                  <span className={styles.recommenderMetaItem}>
+                                    Fusion: {item.rrf_score.toFixed(3)}
+                                  </span>
+                                ) : null}
+                                {item.similarity !== undefined ? (
+                                  <span className={styles.recommenderMetaItem}>
+                                    Similarity: {formatMatchPercent(item.similarity)}
+                                  </span>
+                                ) : null}
+                              </div>
+                              {item.skills_evidence ? (
+                                <details className={styles.recommenderSkillsEvidence}>
+                                  <summary>
+                                    Skills matched: {item.skills_evidence.course_count} courses
+                                  </summary>
+                                  {item.skills_evidence.top_matches?.length ? (
+                                    <ul className={styles.recommenderSkillsList}>
+                                      {item.skills_evidence.top_matches.map((match, idx) => (
+                                        <li
+                                          key={`${item.onet_code}-skill-${idx}`}
+                                          className={styles.recommenderSkillsItem}
+                                        >
+                                          {match.course_title} — {match.skill_name} ({match.taxonomy_type})
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <div className={styles.recommenderCollapsed}>
+                                      No skill matches found.
+                                    </div>
+                                  )}
+                                </details>
+                              ) : null}
+                              <div className={styles.recommenderDuties}>
+                                {dutiesAvailable ? (
+                                  showDutiesList ? (
+                                    <ul
+                                      className={`${styles.recommenderDutiesList} ${isExpanded ? styles.recommenderDutiesExpanded : styles.recommenderDutiesCollapsed}`}
+                                      data-testid="soc-combined-duties"
+                                    >
+                                      {dutiesToShow.map((duty, idx) => (
+                                        <li
+                                          key={`${item.onet_code}-${idx}`}
+                                          className={`${styles.recommenderDutyItem} ${isExpanded ? styles.recommenderDutyExpanded : styles.recommenderDutyCollapsed}`}
+                                        >
+                                          {duty}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <div className={styles.recommenderCollapsed}>
+                                      Duties available ({dutiesCount})
+                                    </div>
+                                  )
+                                ) : (
+                                  <div className={styles.recommenderCollapsed}>No duties available.</div>
+                                )}
+                                {dutiesAvailable && hasMoreDuties ? (
+                                  <button
+                                    type="button"
+                                    className={`${styles.secondaryButton} ${styles.recommenderToggle}`}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setRecommendExpanded((prev) =>
+                                        prev === item.onet_code ? null : item.onet_code,
+                                      );
+                                    }}
+                                  >
+                                    {isExpanded
+                                      ? 'Hide duties'
+                                      : `Show ${remainingDuties} more duties`}
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : !recommendLoading && (dutiesInput.trim() || hasAnyTranscript) ? (
+                      <div className={styles.recommenderEmpty} data-testid="soc-combined-empty">
+                        No recommendations yet. Click “Recommend O*NET Codes” to search.
+                      </div>
+                    ) : null
+                  ) : recommendations.length ? (
                     <div className={styles.recommenderGrid} data-testid="soc-recommend-list">
                       {recommendations.map((item) => {
                         const title = item.matchedOnetTitle ?? item.socTitle ?? 'Unknown title';
                         const hasMoreDuties =
-                          item.dutiesAvailable && item.dutiesCount > dutiesPreviewCount;
+                          item.dutiesAvailable && item.dutiesCount > previewCount;
                         const isExpanded =
                           !hasMoreDuties || recommendExpanded === item.matchedOnetCode;
                         const showDutiesList = !isMobile || isExpanded;
                         const dutiesToShow = isExpanded
                           ? item.duties
-                          : item.duties.slice(0, dutiesPreviewCount);
-                        const remainingDuties = Math.max(item.dutiesCount - dutiesPreviewCount, 0);
+                          : item.duties.slice(0, previewCount);
+                        const remainingDuties = Math.max(item.dutiesCount - previewCount, 0);
                         const isSelected = recommendSelected?.code === item.matchedOnetCode;
                         const confidenceValue =
                           item.confidence ?? item.similarity;
@@ -1875,32 +2884,29 @@ export default function HomePage() {
                           <div
                             key={item.matchedOnetCode}
                             className={styles.recommenderCard}
-                            role="button"
-                            tabIndex={0}
                             data-testid="soc-recommend-card"
                             data-onet-code={item.matchedOnetCode}
-                            onClick={() => handleRecommendSelect(item)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                handleRecommendSelect(item);
-                              }
-                            }}
                           >
-                            <div className={styles.recommenderCardHeader}>
-                              <div>
-                                <div className={styles.recommenderCode}>{item.matchedOnetCode}</div>
-                                <div className={styles.recommenderTitle}>{title}</div>
+                        <div className={styles.recommenderCardHeader}>
+                          <div>
+                            <div className={styles.recommenderCode}>{item.matchedOnetCode}</div>
+                            <div className={styles.recommenderTitle}>{title}</div>
+                            {item.jobZone ? (
+                              <div className={styles.recommenderJobZone}>
+                                <span className={styles.jobZoneBadge}>
+                                  Job Zone {item.jobZone}
+                                </span>
                               </div>
-                              {isSelected ? (
-                                <span className={styles.recommenderSelected}>✓ Selected</span>
-                              ) : (
+                            ) : null}
+                          </div>
+                          {isSelected ? (
+                            <span className={styles.recommenderSelected}>✓ Selected</span>
+                          ) : (
                                 <button
                                   type="button"
                                   className={`${styles.primaryButton} ${styles.recommenderSelect}`}
                                   data-testid="soc-recommend-select"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
+                                  onClick={() => {
                                     handleRecommendSelect(item);
                                   }}
                                 >
@@ -1988,7 +2994,7 @@ export default function HomePage() {
                     onClick={() => setRecommendOpen(true)}
                     data-testid="soc-recommender-toggle"
                   >
-                    Recommend by duties
+                    Recommend by duties or transcript
                   </button>
                 </div>
               )

@@ -3,36 +3,12 @@ import { NextResponse } from 'next/server';
 import { getPrisma } from '../../../../../src/db/prisma';
 import { requireAccess } from '../../../../../src/lib/access';
 import { captureDatasetContext } from '../../../../../src/lib/constants';
-import { createEmbeddingProviderFromEnv } from '../../../../../src/lib/embeddings/providerFactory';
-import { toVectorLiteral } from '../../../../../src/lib/embeddings/vectorUtils';
 import { rateLimitOrThrow, RateLimitError } from '../../../../../src/lib/rateLimit';
+import { matchDuties, EmbeddingsNotReadyError, DutiesMatchTimeoutError } from '../../../../../src/lib/match/dutiesMatch';
 
 export const runtime = "nodejs";
 
-const MAX_INPUT_LENGTH = 8000;
-
 class TimeoutError extends Error {}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function computeConfidenceScores(values: number[]): number[] {
-  const bounded = values.map((value) => clamp(value, 0, 1));
-  if (bounded.length === 0) return [];
-  const min = Math.min(...bounded);
-  const max = Math.max(...bounded);
-  const range = max - min;
-  const normalized =
-    range < 1e-6 ? bounded.map(() => 0.5) : bounded.map((value) => (value - min) / range);
-  const power = 1.4;
-  const displayMin = 0.5 + Math.random() * 0.1;
-  const displayMax = 0.9 + Math.random() * 0.08;
-  const spread = displayMax - displayMin;
-  return normalized.map((value) =>
-    clamp(displayMin + Math.pow(value, power) * spread, 0, 1),
-  );
-}
 
 function parseLimit(raw: string | undefined, fallback: number): number {
   if (!raw) return fallback;
@@ -113,10 +89,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'dutiesText is required' }, { status: 400 });
     }
 
-    const inputLength = rawInput.length;
-    const inputTruncated = rawInput.length > MAX_INPUT_LENGTH;
-    const dutiesText = rawInput.slice(0, MAX_INPUT_LENGTH);
-
     const internalTopK = parseLimit(process.env.SOC_RECOMMEND_INTERNAL_TOPK, 30);
     const outputTopK = parseLimit(process.env.SOC_RECOMMEND_OUTPUT_TOPK, 6);
     const statementTimeoutMs = parseLimit(
@@ -128,60 +100,22 @@ export async function POST(req: Request) {
       300,
     );
 
-    const embeddingVersion = await prisma.onetEmbeddingVersion.findFirst({
-      where: { isActive: true },
-      select: { id: true, onetDatasetVersionId: true },
+    const dutiesMatch = await matchDuties({
+      prisma,
+      dutiesText: rawInput,
+      internalTopK,
+      outputTopK,
+      statementTimeoutMs,
     });
 
-    if (!embeddingVersion) {
-      return NextResponse.json({ error: 'Embeddings not ready', code: 'EMBEDDINGS_NOT_READY' }, { status: 503 });
-    }
-
-    const provider = createEmbeddingProviderFromEnv();
-    const queryVector = await provider.embedQuery(dutiesText);
-    const vectorLiteral = toVectorLiteral(queryVector);
-
-    let rows: Array<{ onetCode: string; distance: number }> = [];
-    try {
-      rows = await prisma.$transaction(async (tx) => {
-        await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${statementTimeoutMs}`);
-
-        if (process.env.NODE_ENV === 'test' && process.env.TEST_INJECT_DB_SLEEP_MS) {
-          const sleepMs = Number(process.env.TEST_INJECT_DB_SLEEP_MS);
-          if (Number.isFinite(sleepMs) && sleepMs > 0) {
-            await tx.$executeRawUnsafe('SELECT pg_sleep($1::float)', sleepMs / 1000);
-          }
-        }
-
-        return tx.$queryRawUnsafe<Array<{ onetCode: string; distance: number }>>(
-          'SELECT "onetCode", ("embedding" <=> $1::vector) AS distance FROM "OnetDutyEmbedding" WHERE "embeddingVersionId" = $2::uuid ORDER BY "embedding" <=> $1::vector ASC LIMIT $3',
-          vectorLiteral,
-          embeddingVersion.id,
-          internalTopK,
-        );
-      });
-    } catch (error) {
-      const errorInfo = error as { code?: string; meta?: { code?: string } };
-      const pgCode = errorInfo.code === 'P2010' ? errorInfo.meta?.code : errorInfo.code;
-      if (pgCode === '57014') {
-        return NextResponse.json({ error: 'Query timeout' }, { status: 504 });
-      }
-      throw error;
-    }
-
-    const trimmedRows = rows.slice(0, outputTopK);
-    const rawSimilarities = trimmedRows.map((row) =>
-      clamp(1 - row.distance / 2, 0, 1),
-    );
-    const confidenceScores = computeConfidenceScores(rawSimilarities);
-    const onetCodes = trimmedRows.map((row) => row.onetCode);
+    const onetCodes = dutiesMatch.onetCodes;
     const socCodes = Array.from(new Set(onetCodes.map((code) => toSocCode(code))));
 
     const datasetContext = await captureDatasetContext(prisma);
     const oflcVersionId = datasetContext.oflcVersionId;
 
     const warnings: string[] = [];
-    if (datasetContext.onetVersionId !== embeddingVersion.onetDatasetVersionId) {
+    if (datasetContext.onetVersionId !== dutiesMatch.onetDatasetVersionId) {
       warnings.push('Active O*NET dataset version differs from the embedding dataset version.');
     }
 
@@ -193,7 +127,7 @@ export async function POST(req: Request) {
 
       const dutyRows = await prisma.onetDuty.findMany({
         where: {
-          datasetVersionId: embeddingVersion.onetDatasetVersionId,
+          datasetVersionId: dutiesMatch.onetDatasetVersionId,
           onetCode: { in: onetCodes },
         },
         select: { onetCode: true, dutyText: true, sortOrder: true },
@@ -361,10 +295,10 @@ export async function POST(req: Request) {
     const [onetTitles, socTitles] = await Promise.all([
       prisma.onetOccupation.findMany({
         where: {
-          datasetVersionId: embeddingVersion.onetDatasetVersionId,
+          datasetVersionId: dutiesMatch.onetDatasetVersionId,
           onetCode: { in: onetCodes },
         },
-        select: { onetCode: true, title: true },
+        select: { onetCode: true, title: true, jobZone: true },
       }),
       prisma.socTitle.findMany({
         where: {
@@ -376,21 +310,25 @@ export async function POST(req: Request) {
     ]);
 
     const onetTitleMap = new Map(onetTitles.map((row) => [row.onetCode, row.title]));
+    const onetJobZoneMap = new Map(
+      onetTitles.map((row) => [row.onetCode, row.jobZone ?? null]),
+    );
     const socTitleMap = new Map(socTitles.map((row) => [row.socCode, row.title]));
 
-    const items = trimmedRows.map((row, idx) => {
-      const onetCode = row.onetCode;
+    const items = dutiesMatch.items.map((match) => {
+      const onetCode = match.onetCode;
       const socCode = toSocCode(onetCode);
       const dutyInfo = dutiesByCode.get(onetCode);
       const wageInfo = wagesBySoc.get(socCode);
       const wageSource = sourceBySoc.get(socCode) ?? 'NONE';
       const wageAreaCode = areaBySoc.get(socCode) ?? null;
-      const similarity = rawSimilarities[idx] ?? clamp(1 - row.distance / 2, 0, 1);
-      const confidence = confidenceScores[idx] ?? similarity;
+      const similarity = match.similarity;
+      const confidence = match.confidence;
 
       return {
         matchedOnetCode: onetCode,
         matchedOnetTitle: onetTitleMap.get(onetCode) ?? null,
+        jobZone: onetJobZoneMap.get(onetCode) ?? null,
         socCode,
         socTitle: socTitleMap.get(socCode) ?? null,
         similarity,
@@ -414,13 +352,13 @@ export async function POST(req: Request) {
       items,
       warnings,
       meta: {
-        embeddingVersionId: embeddingVersion.id,
-        onetDatasetVersionId: embeddingVersion.onetDatasetVersionId,
+        embeddingVersionId: dutiesMatch.embeddingVersionId,
+        onetDatasetVersionId: dutiesMatch.onetDatasetVersionId,
         oflcDatasetVersionId: oflcVersionId,
         internalTopK,
         outputTopK,
-        inputLength,
-        inputTruncated,
+        inputLength: dutiesMatch.inputLength,
+        inputTruncated: dutiesMatch.inputTruncated,
         queryTimeMs: Date.now() - startTime,
         enrichment: {
           dutiesIncluded,
@@ -437,6 +375,17 @@ export async function POST(req: Request) {
         { error: 'Rate limit exceeded' },
         { status: error.status, headers: error.headers },
       );
+    }
+
+    if (error instanceof EmbeddingsNotReadyError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status },
+      );
+    }
+
+    if (error instanceof DutiesMatchTimeoutError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
 
     if (error instanceof Error && 'status' in error) {

@@ -7,10 +7,73 @@ const prisma = new PrismaClient();
 
 describe('lookup integration', () => {
   const previousProvider = process.env.GEOCODER_PROVIDER;
+  let onetVersionId = '';
+  let oflcVersionId = '';
+  let onet8WithDuties = '';
+  let onet8Missing = '';
+
+  async function findOnet8WithDuties() {
+    const candidates = await prisma.onetDuty.findMany({
+      where: {
+        datasetVersionId: onetVersionId,
+        onetCode: { contains: '.' },
+      },
+      select: { onetCode: true },
+      distinct: ['onetCode'],
+      take: 50,
+    });
+
+    for (const candidate of candidates) {
+      const soc6 = candidate.onetCode.split('.')[0] ?? '';
+      if (!soc6) continue;
+      const socExists = await prisma.socTitle.findFirst({
+        where: { datasetVersionId: oflcVersionId, socCode: soc6 },
+        select: { socCode: true },
+      });
+      if (socExists) {
+        return candidate.onetCode;
+      }
+    }
+    return '';
+  }
+
+  async function findMissingOnet8Code(soc6: string) {
+    for (let suffix = 99; suffix >= 90; suffix -= 1) {
+      const code = `${soc6}.${String(suffix).padStart(2, '0')}`;
+      const exists = await prisma.onetDuty.findFirst({
+        where: { datasetVersionId: onetVersionId, onetCode: code },
+        select: { onetCode: true },
+      });
+      if (!exists) {
+        return code;
+      }
+    }
+    return `${soc6}.99`;
+  }
 
   beforeAll(async () => {
     process.env.GEOCODER_PROVIDER = 'stub';
     await prisma.$connect();
+
+    const onetVersion = await prisma.datasetVersion.findFirst({
+      where: { datasetName: 'onet', isActive: true },
+      select: { id: true },
+    });
+    const oflcVersion = await prisma.datasetVersion.findFirst({
+      where: { datasetName: 'oflc', isActive: true },
+      select: { id: true },
+    });
+    if (!onetVersion || !oflcVersion) {
+      throw new Error('Active dataset versions not found. Seed or ingest data first.');
+    }
+    onetVersionId = onetVersion.id;
+    oflcVersionId = oflcVersion.id;
+
+    onet8WithDuties = await findOnet8WithDuties();
+    if (!onet8WithDuties) {
+      throw new Error('No O*NET 8-digit duties found for an active SOC.');
+    }
+    onet8Missing = await findMissingOnet8Code(onet8WithDuties.split('.')[0] ?? '');
   });
 
   afterAll(async () => {
@@ -56,7 +119,7 @@ describe('lookup integration', () => {
     const response = await lookup(
       {
         address: { fullText: '410 Great Road B9 Unit 7-3, Littleton, MA 01460' },
-        socCode: '15-1252.01',
+        socCode: onet8WithDuties,
       },
       { prisma },
     );
@@ -65,14 +128,14 @@ describe('lookup integration', () => {
     expect(response.wages?.level1?.annual).toBeTypeOf('number');
     const sources = response.duties?.duties.flatMap((duty) => duty.sources) ?? [];
     expect(sources.length).toBeGreaterThan(0);
-    expect(sources.every((source) => source === '15-1252.01')).toBe(true);
+    expect(sources.every((source) => source === onet8WithDuties)).toBe(true);
   });
 
   it('falls back to SOC-6 duties when O*NET 8-digit duties are missing', async () => {
     const response = await lookup(
       {
         address: { fullText: '410 Great Road B9 Unit 7-3, Littleton, MA 01460' },
-        socCode: '15-1252.02',
+        socCode: onet8Missing,
       },
       { prisma },
     );
@@ -81,7 +144,7 @@ describe('lookup integration', () => {
     expect(response.duties?.duties?.length).toBeGreaterThan(0);
     expect(response.warnings?.join(' ')).toContain('falling back to SOC-6');
     const sources = response.duties?.duties.flatMap((duty) => duty.sources) ?? [];
-    expect(sources.every((source) => source !== '15-1252.02')).toBe(true);
+    expect(sources.every((source) => source !== onet8Missing)).toBe(true);
   });
 
   it('returns 422 when SOC is not found', async () => {
@@ -113,14 +176,14 @@ describe('lookup integration', () => {
   });
 
   it('soc only with 8-digit input returns extremes and 8-digit duties', async () => {
-    const response = await lookup({ socCode: '15-1252.01' }, { prisma });
+    const response = await lookup({ socCode: onet8WithDuties }, { prisma });
 
     expect(response.kind).toBe('soc_extremes');
     expect(response.extremes?.lowest.length).toBe(8);
     expect(response.extremes?.highest.length).toBe(8);
     const sources = response.duties?.duties.flatMap((duty) => duty.sources) ?? [];
     expect(sources.length).toBeGreaterThan(0);
-    expect(sources.every((source) => source === '15-1252.01')).toBe(true);
+    expect(sources.every((source) => source === onet8WithDuties)).toBe(true);
   });
 
   it('soc_extremes ordering is deterministic', async () => {

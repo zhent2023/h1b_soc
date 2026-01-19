@@ -35,6 +35,60 @@ describe('wages', () => {
     expect(result.notes.length).toBeGreaterThan(0);
   });
 
+  it('prefers annual basis when annual meets exceed hourly meets', () => {
+    const wage = {
+      area: { areaCode: 'A1', areaName: 'Austin', areaType: 'oflc' },
+      socCode: '15-0000',
+      wageYear: '2024',
+      isAcwia: false,
+      level1: { annual: 50000, hourly: 50 },
+      level2: { annual: 70000, hourly: 60 },
+      level3: { annual: 90000, hourly: 70 },
+      level4: { annual: 110000, hourly: 80 },
+      hasDataQualityIssue: false,
+    };
+
+    const result = computeMetWageLevel({ amount: 80000, unit: 'year', wage });
+    expect(result.basis).toBe('annual');
+    expect(result.notes.length).toBeGreaterThan(0);
+  });
+
+  it('prefers hourly basis when hourly meets exceed annual meets', () => {
+    const wage = {
+      area: { areaCode: 'A1', areaName: 'Austin', areaType: 'oflc' },
+      socCode: '15-0000',
+      wageYear: '2024',
+      isAcwia: false,
+      level1: { annual: 120000, hourly: 30 },
+      level2: { annual: 150000, hourly: 40 },
+      level3: { annual: 180000, hourly: 50 },
+      level4: { annual: 210000, hourly: 60 },
+      hasDataQualityIssue: false,
+    };
+
+    const result = computeMetWageLevel({ amount: 45, unit: 'hour', wage });
+    expect(result.basis).toBe('hourly');
+    expect(result.notes.length).toBeGreaterThan(0);
+  });
+
+  it('uses either basis when annual and hourly meets are equal', () => {
+    const wage = {
+      area: { areaCode: 'A1', areaName: 'Austin', areaType: 'oflc' },
+      socCode: '15-0000',
+      wageYear: '2024',
+      isAcwia: false,
+      level1: { annual: 83200, hourly: 40 },
+      level2: { annual: 100000, hourly: 48 },
+      level3: { annual: 120000, hourly: 58 },
+      level4: { annual: 140000, hourly: 68 },
+      hasDataQualityIssue: false,
+    };
+
+    const result = computeMetWageLevel({ amount: 40, unit: 'hour', wage });
+    expect(result.basis).toBe('either');
+    expect(result.notes).toHaveLength(0);
+  });
+
   it('returns cached wage rates', async () => {
     cacheGet.mockResolvedValue({ socCode: '15-0000' });
     const prisma = {
@@ -112,6 +166,46 @@ describe('wages', () => {
 
     expect(result?.level2.annual).toBeGreaterThan(result!.level1.annual);
     expect(result?.dataQualityNotes).toEqual({ issues: ['low sample'] });
+  });
+
+  it('fills wage fallbacks when hourly values are missing', async () => {
+    cacheGet.mockResolvedValue(null);
+    const prisma = {
+      wageRate: {
+        findFirst: vi.fn().mockResolvedValue({
+          area: { areaCode: 'A1', areaName: 'Austin', stateAb: 'TX' },
+          areaCode: 'A1',
+          socCode: '15-0000',
+          wageYear: '2024',
+          isAcwia: false,
+          l1Annual: 52000,
+          l1Hourly: null,
+          l2Annual: null,
+          l2Hourly: null,
+          l3Annual: null,
+          l3Hourly: null,
+          l4Annual: null,
+          l4Hourly: null,
+          hasDataQualityIssue: false,
+          dataQualityNotes: null,
+        }),
+      },
+    } as unknown as PrismaClient;
+
+    const result = await getWageRate({
+      prisma,
+      datasetVersionId: 'oflc',
+      wageYear: '2024',
+      isAcwia: false,
+      areaCode: 'A1',
+      socCode: '15-0000',
+    });
+
+    const baseHourly = Math.round((52000 / 2080) * 100) / 100;
+    expect(result?.level1.hourly).toBe(baseHourly);
+    expect(result?.level2.annual).toBe(67000);
+    expect(result?.level2.hourly).toBe(Math.round((baseHourly + 8) * 100) / 100);
+    expect(result?.level4.annual).toBe(97000);
   });
 
   it('falls back to null data quality notes for invalid data', async () => {
@@ -230,5 +324,67 @@ describe('wages', () => {
 
     expect(result.lowest[0]?.area.displayName).toContain('Travis County');
     expect(cacheSet).toHaveBeenCalled();
+  });
+
+  it('uses town matches to build display names when county names are missing', async () => {
+    cacheGet.mockResolvedValue(null);
+    const prisma = {
+      wageRate: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              areaCode: 'A1',
+              area: { areaCode: 'A1', areaName: 'Austin-Round Rock, TX', stateAb: 'TX' },
+              l1Annual: 50000,
+              l1Hourly: { toString: () => '25.0' },
+              l2Annual: null,
+              l2Hourly: null,
+              l3Annual: null,
+              l3Hourly: null,
+              l4Annual: null,
+              l4Hourly: null,
+            },
+          ])
+          .mockResolvedValueOnce([
+            {
+              areaCode: 'A1',
+              area: { areaCode: 'A1', areaName: 'Austin-Round Rock, TX', stateAb: 'TX' },
+              l1Annual: 60000,
+              l1Hourly: { toString: () => '28.0' },
+              l2Annual: null,
+              l2Hourly: null,
+              l3Annual: null,
+              l3Hourly: null,
+              l4Annual: null,
+              l4Hourly: null,
+            },
+          ]),
+      },
+      oflcAreaCounty: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            areaCode: 'A1',
+            countyTownName: 'Round Rock',
+            matchKind: 'town',
+            stateAb: 'TX',
+          },
+        ]),
+      },
+    } as unknown as PrismaClient;
+
+    const result = await getSocExtremes({
+      prisma,
+      datasetVersionId: 'oflc',
+      wageYear: '2024',
+      isAcwia: false,
+      socCode: '15-0000',
+      metric: 'l1Annual',
+      n: 1,
+    });
+
+    const displayName = result.lowest[0]?.area.displayName ?? '';
+    expect(displayName).toContain('Round Rock');
+    expect(displayName).toContain('TX');
   });
 });

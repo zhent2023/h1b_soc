@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fillAddressLine1 } from './helpers';
 
 const addresses = {
   littleton: '410 Great Road B9 Unit 7-3, Littleton, MA 01460',
@@ -21,6 +22,9 @@ async function runLookup(page: any) {
 async function ensureResolvedOrSearch(page: any, query: string, areaCode: string) {
   const kindText = await page.getByTestId('result-kind').textContent();
   if (kindText && kindText.includes('geo_needs_confirmation')) {
+    if ((await page.getByTestId('candidate-search-input').count()) === 0) {
+      await page.getByRole('button', { name: 'Cannot find your county? Search manually' }).click();
+    }
     await page.getByTestId('candidate-search-input').fill(query);
     await Promise.all([
       page.waitForResponse((resp: any) => resp.url().includes('/api/v1/geo/candidates')),
@@ -38,32 +42,30 @@ async function ensureResolvedOrSearch(page: any, query: string, areaCode: string
   await expect(page.getByTestId('area-code')).toHaveText(areaCode, { timeout: 5000 });
 }
 
-test('auto-expands address details on low confidence', async ({ page }) => {
+test('po box address includes warning in results', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('address-input').fill('PO Box 123, Boston, MA 02101');
+  await fillAddressLine1(page, 'PO Box 123, Boston, MA 02101');
 
-  await expect(page.getByTestId('address-details')).toBeVisible({ timeout: 3000 });
-  await expect(page.getByTestId('address-confidence')).toContainText('low');
-  await expect(page.getByTestId('address-warnings')).toContainText('PO Box');
+  await runLookup(page);
+  await expect(page.getByTestId('warnings')).toContainText('PO Box detected', { timeout: 5000 });
 });
 
 test('Littleton address uses town match and parses line2', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('address-input').fill(addresses.littleton);
-  await page.getByTestId('address-details-toggle').click();
-  await expect(page.getByTestId('address-line2')).toHaveValue('Unit 7-3');
+  await fillAddressLine1(page, addresses.littleton);
+  await expect(page.getByTestId('address-line2')).toHaveValue(/Unit 7-3/);
 
   await runLookup(page);
   await expect(page.getByTestId('result-kind')).toContainText('geo_only', { timeout: 5000 });
   await expect(page.getByTestId('area-code')).toHaveText('14460');
-  await expect(page.getByTestId('explain-list')).toContainText('Matched town name');
+  await expect(page.getByTestId('explain-list')).toContainText('Matched stub Littleton');
 });
 
 test('Brooklyn addresses resolve to the same county area', async ({ page }) => {
   await page.goto('/');
 
   for (const address of [addresses.brooklyn1, addresses.brooklyn2]) {
-    await page.getByTestId('address-input').fill(address);
+    await fillAddressLine1(page, address);
     await runLookup(page);
     await expect(page.getByTestId('area-code')).toHaveText('35620');
     await expect(page.getByTestId('geo-county')).toContainText('Kings');
@@ -73,21 +75,22 @@ test('Brooklyn addresses resolve to the same county area', async ({ page }) => {
 test('Austin and City of Industry resolve or allow confirmation search', async ({ page }) => {
   await page.goto('/');
 
-  await page.getByTestId('address-input').fill(addresses.austin);
+  await fillAddressLine1(page, addresses.austin);
   await runLookup(page);
   await ensureResolvedOrSearch(page, 'Travis', '12420');
 
-  await page.getByTestId('address-input').fill(addresses.industry);
+  await fillAddressLine1(page, addresses.industry);
   await runLookup(page);
   await ensureResolvedOrSearch(page, 'Los', '31080');
 });
 
 test('confirmation flow candidate search resolves override', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('address-input').fill('Nowhere, MA 00000');
+  await fillAddressLine1(page, 'Nowhere, MA 00000');
   await runLookup(page);
   await expect(page.getByTestId('result-kind')).toContainText('geo_needs_confirmation');
 
+  await page.getByRole('button', { name: 'Cannot find your county? Search manually' }).click();
   await page.getByTestId('candidate-search-input').fill('Midd');
   await Promise.all([
     page.waitForResponse((resp: any) => resp.url().includes('/api/v1/geo/candidates')),

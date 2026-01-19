@@ -28,3 +28,5 @@ data/
 .vercel
 .env*.local
 *.tsbuildinfo
+.local/
+.tmp_schema_*.json

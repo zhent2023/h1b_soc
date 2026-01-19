@@ -38,6 +38,7 @@ function createPrisma(): PrismaClient {
     socTitle: { findFirst: vi.fn().mockResolvedValue({ socCode: '15-0000' }) },
     geoCityCounty: { findMany: vi.fn().mockResolvedValue([]) },
     oflcAreaCounty: { findMany: vi.fn().mockResolvedValue([]) },
+    onetOccupation: { findUnique: vi.fn().mockResolvedValue(null) },
   } as unknown as PrismaClient;
 }
 
@@ -427,5 +428,83 @@ describe('lookup', () => {
 
     expect(result.kind).toBe('geo_only');
     expect(result.warnings?.join(' ')).toContain('SOC code ignored');
+  });
+
+  it('filters address parsing warnings when city/state are provided', async () => {
+    const prisma = createPrisma();
+    geocodeMock.mockResolvedValue({
+      stateAb: 'TX',
+      confidence: 'high',
+      explain: ['geocode ok'],
+      countyFips: '48001',
+    });
+    resolveOflcAreaMock.mockResolvedValue({
+      kind: 'resolved',
+      area: { areaCode: 'A1', areaName: 'Austin', stateAb: 'TX' },
+      cbsa: undefined,
+      explain: ['resolved'],
+    });
+
+    const result = await lookup(
+      {
+        address: {
+          fullText: '123 Main',
+          city: 'Austin',
+          state: 'TX',
+        },
+      },
+      { prisma },
+    );
+
+    expect(result.kind).toBe('geo_only');
+    expect(result.warnings ?? []).not.toContain('Address is missing city/state.');
+    expect(result.warnings ?? []).not.toContain('City/state could not be parsed.');
+  });
+
+  it('adds a city-only warning when no street address is provided', async () => {
+    const prisma = createPrisma();
+    geocodeMock.mockResolvedValue({
+      stateAb: 'TX',
+      confidence: 'high',
+      explain: ['geocode ok'],
+      countyFips: '48001',
+    });
+    resolveOflcAreaMock.mockResolvedValue({
+      kind: 'resolved',
+      area: { areaCode: 'A1', areaName: 'Austin', stateAb: 'TX' },
+      cbsa: undefined,
+      explain: ['resolved'],
+    });
+
+    const result = await lookup(
+      { address: { city: 'Austin', state: 'TX' } },
+      { prisma },
+    );
+
+    expect(result.warnings ?? []).toContain('City-level match; results may be approximate.');
+  });
+
+  it('returns empty confirmation list when resolver omits suggestions', async () => {
+    const prisma = createPrisma();
+    geocodeMock.mockResolvedValue({
+      stateAb: 'TX',
+      confidence: 'low',
+      explain: ['geocode ok'],
+      countyFips: '48001',
+    });
+    resolveOflcAreaMock.mockResolvedValue({
+      kind: 'needs_confirmation',
+      explain: ['needs confirmation'],
+      suggestions: undefined,
+    });
+    getSocExtremesMock.mockResolvedValue({ lowest: [], highest: [] });
+
+    const result = await lookup(
+      { address: { line1: '123 Main', city: 'Austin', state: 'TX' }, socCode: '15-0000' },
+      { prisma },
+    );
+
+    expect(result.kind).toBe('geo_needs_confirmation');
+    expect(result.confirmation?.suggestions ?? []).toHaveLength(0);
   });
 });

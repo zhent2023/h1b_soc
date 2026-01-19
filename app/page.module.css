@@ -331,6 +331,486 @@
   background: rgba(17, 27, 50, 0.45);
 }
 
+.success {
+  padding: 12px 16px;
+  margin: 16px 0;
+  border-radius: 12px;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: var(--color-muted-strong);
+}
+
+.headerActions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.transcriptMeta {
+  display: grid;
+  gap: 8px;
+  color: var(--color-muted);
+  font-size: 0.95rem;
+}
+
+.transcriptMetaLinks {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.transcriptMetaNote {
+  color: var(--color-muted);
+}
+
+.transcriptLabel {
+  font-weight: 600;
+  color: var(--color-muted-strong);
+  margin-right: 6px;
+}
+
+.transcriptTableWrapper {
+  overflow-x: auto;
+}
+
+.transcriptTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.transcriptTable th,
+.transcriptTable td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--color-stroke);
+  vertical-align: top;
+}
+
+.transcriptTable th {
+  color: var(--color-muted-strong);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.transcriptConflictRow {
+  border-left: 3px solid rgba(248, 113, 113, 0.8);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.transcriptConflictReason {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #fecaca;
+  grid-column: 2;
+}
+
+.transcriptExcludedRow {
+  border-left: 3px solid rgba(148, 163, 184, 0.6);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.transcriptMainRow td {
+  border-bottom: none;
+  padding-bottom: 4px;
+}
+
+.transcriptDetailRow td {
+  padding-top: 0;
+}
+
+.transcriptSummaryRow {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.transcriptSummaryLabel {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted-strong);
+}
+
+.transcriptSummaryInput {
+  width: 100%;
+  margin-top: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.45);
+  color: var(--color-ink);
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 72px;
+}
+
+.transcriptActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.transcriptHint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.transcriptEmpty {
+  padding: 16px 0;
+  color: var(--color-muted);
+}
+
+.transcriptUpload {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  background: rgba(17, 27, 50, 0.45);
+}
+
+.transcriptUploadRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.transcriptUploadLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--color-muted-strong);
+}
+
+.transcriptUploadInput {
+  color: var(--color-muted);
+}
+
+.transcriptUploadInput::file-selector-button {
+  margin-right: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.12);
+  color: #dbeafe;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.transcriptUploadInput::file-selector-button:hover {
+  border-color: var(--color-accent);
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.transcriptSelection {
+  display: grid;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.transcriptFileList {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.transcriptFileItem {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.transcriptStatusRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--color-muted);
+}
+
+.transcriptStatusLabel {
+  font-weight: 600;
+  color: var(--color-muted-strong);
+}
+
+.transcriptList {
+  display: grid;
+  gap: 10px;
+}
+
+.transcriptCard {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.transcriptCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.transcriptCardName {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-ink);
+}
+
+.transcriptCardStatus {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.transcriptCardStatusPending {
+  color: #fde68a;
+}
+
+.transcriptStatusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+  animation: transcriptPulse 1.2s ease-in-out infinite;
+}
+
+.transcriptCardMeta {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.transcriptStages {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 6px;
+}
+
+.transcriptStage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.35);
+  color: var(--color-muted);
+}
+
+.transcriptStageDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+.transcriptStagePending {
+  color: var(--color-muted);
+}
+
+.transcriptStageActive {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.transcriptStageDone {
+  color: #dbeafe;
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.transcriptStageSkipped {
+  color: rgba(148, 163, 184, 0.7);
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.2);
+}
+
+.transcriptStageFailed {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.transcriptEta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-muted-strong);
+}
+
+.transcriptQueue {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.transcriptPendingHint {
+  font-size: 12px;
+  color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.transcriptDots {
+  width: 14px;
+  overflow: hidden;
+  display: inline-block;
+}
+
+.transcriptDots::after {
+  content: '...';
+  display: inline-block;
+  animation: transcriptDots 1.4s steps(4, end) infinite;
+}
+
+.transcriptProgress {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.transcriptProgress::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 -40%;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.7), transparent);
+  animation: transcriptProgress 1.4s ease-in-out infinite;
+}
+
+.transcriptDebug {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.35);
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.transcriptDebug summary {
+  cursor: pointer;
+  color: var(--color-muted-strong);
+  font-weight: 600;
+}
+
+.transcriptDebugSummary {
+  margin-top: 6px;
+  color: var(--color-muted);
+}
+
+.transcriptDebugList {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.transcriptDebugItem {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.transcriptDebugItem:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.transcriptDebugTitle {
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+.transcriptDebugMeta {
+  color: var(--color-muted);
+  line-height: 1.4;
+}
+
+.transcriptLink {
+  color: var(--color-sky);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.transcriptLink:hover {
+  text-decoration: underline;
+}
+
+@keyframes transcriptPulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes transcriptProgress {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(240%);
+  }
+}
+
+@keyframes transcriptDots {
+  0% {
+    width: 0;
+  }
+  100% {
+    width: 14px;
+  }
+}
+
+.transcriptWarningList {
+  margin: 6px 0 0 18px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.transcriptPending {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
 .recommenderHeader {
   display: flex;
   align-items: center;
@@ -370,6 +850,14 @@
 .recommenderActions {
   display: flex;
   justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.recommenderHint {
+  font-size: 12px;
+  color: var(--color-muted);
 }
 
 .recommenderBanner {
@@ -392,8 +880,8 @@
 
 .recommenderCard {
   display: grid;
-  gap: 10px;
-  grid-template-rows: minmax(64px, auto) minmax(40px, auto) minmax(32px, auto) minmax(180px, auto);
+  gap: 8px;
+  grid-template-rows: minmax(56px, auto) minmax(28px, auto) minmax(28px, auto) minmax(140px, auto);
   align-content: start;
   border-radius: 16px;
   padding: 16px;
@@ -439,6 +927,39 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   min-height: calc(2 * 1.4em);
+}
+
+.recommenderJobZone {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.skillsGateBadge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-radius: 999px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+}
+
+.skillsGatePass {
+  color: #dcfce7;
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.16);
+}
+
+.skillsGateFail {
+  color: #fee2e2;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.skillsGateSkipped {
+  color: var(--color-muted-strong);
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.12);
 }
 
 
@@ -516,17 +1037,49 @@
   grid-template-rows: 1fr auto;
 }
 
+.recommenderSkillsEvidence {
+  border-radius: 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.3);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--color-muted-strong);
+}
+
+.recommenderSkillsEvidence summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.recommenderSkillsEvidence summary::-webkit-details-marker {
+  display: none;
+}
+
+.recommenderSkillsList {
+  list-style: none;
+  padding: 8px 0 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.recommenderSkillsItem {
+  font-size: 12px;
+  color: var(--color-muted-strong);
+}
+
 .recommenderDutiesList {
   list-style: none;
   padding: 0;
   margin: 0;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   font-size: 13px;
 }
 
 .recommenderDutiesCollapsed {
-  min-height: calc(9em + 40px);
+  min-height: calc(6em + 32px);
 }
 
 .recommenderDutiesExpanded {
@@ -619,11 +1172,28 @@
   transform: translateX(2px);
 }
 
+.suggestionMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .suggestionCode {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--color-muted);
+}
+
+.jobZoneBadge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted-strong);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.12);
+  border-radius: 999px;
+  padding: 2px 6px;
 }
 
 .suggestionTitle {
@@ -1051,6 +1621,17 @@
   margin: 0 0 8px;
   font-size: 18px;
   font-weight: 600;
+}
+
+.cardTitleInline {
+  margin: 0;
+}
+
+.cardTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .cardHeaderRow {

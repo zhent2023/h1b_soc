@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
-const port = process.env.PORT ?? '3000';
+const port = process.env.PORT ?? '3100';
 const storageStatePath = path.join(process.cwd(), 'test-results', 'e2e-auth.json');
 const envPath = path.join(process.cwd(), '.env');
 
@@ -49,10 +49,11 @@ export default defineConfig({
   webServer: {
     command: 'pnpm dev',
     url: `http://localhost:${port}`,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       ...process.env,
+      PORT: port,
       ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
       ...(redisUrl !== undefined ? { REDIS_URL: redisUrl } : {}),
       ACCESS_MODE: 'invite',
@@ -60,6 +61,14 @@ export default defineConfig({
       FEATURE_WAGE_QUALITY_BANNER: 'true',
       FEATURE_SOC_RECOMMENDER: 'true',
       NEXT_PUBLIC_FEATURE_SOC_RECOMMENDER: 'true',
+      FEATURE_SKILL_MATCHING: 'true',
+      FEATURE_MATCH_FUSION: 'true',
+      NEXT_PUBLIC_FEATURE_SKILL_MATCHING: 'true',
+      EMBEDDING_PROVIDER: 'stub',
+      EMBEDDING_MODEL: 'stub',
+      EMBEDDING_API_KEY: '',
+      STORAGE_PROVIDER: 'local',
+      LOCAL_STORAGE_DIR: '.local/e2e-transcripts',
     },
   },
 });
