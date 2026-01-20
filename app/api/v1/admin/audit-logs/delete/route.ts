@@ -44,9 +44,9 @@ function buildActionExcludeFilter(entry: string): Prisma.AuditLogWhereInput | nu
   if (trimmed.endsWith('*')) {
     const prefix = trimmed.slice(0, -1);
     if (!prefix) return null;
-    return { action: { startsWith: prefix, mode: 'insensitive' } };
+    return { action: { startsWith: prefix, mode: Prisma.QueryMode.insensitive } };
   }
-  return { action: { contains: trimmed, mode: 'insensitive' } };
+  return { action: { contains: trimmed, mode: Prisma.QueryMode.insensitive } };
 }
 
 export async function POST(req: Request) {
@@ -77,25 +77,25 @@ export async function POST(req: Request) {
 
     const where: Prisma.AuditLogWhereInput = {};
     if (actorEmail) {
-      where.actorEmail = { contains: actorEmail, mode: 'insensitive' };
+      where.actorEmail = { contains: actorEmail, mode: Prisma.QueryMode.insensitive };
     }
     if (actionFilter) {
-      where.action = { contains: actionFilter, mode: 'insensitive' };
+      where.action = { contains: actionFilter, mode: Prisma.QueryMode.insensitive };
     }
     if (resource) {
-      where.resource = { contains: resource, mode: 'insensitive' };
+      where.resource = { contains: resource, mode: Prisma.QueryMode.insensitive };
     }
     if (resourceId) {
-      where.resourceId = { contains: resourceId, mode: 'insensitive' };
+      where.resourceId = { contains: resourceId, mode: Prisma.QueryMode.insensitive };
     }
     if (method) {
       where.method = method;
     }
     if (path) {
-      where.path = { contains: path, mode: 'insensitive' };
+      where.path = { contains: path, mode: Prisma.QueryMode.insensitive };
     }
     if (userAgent) {
-      where.userAgent = { contains: userAgent, mode: 'insensitive' };
+      where.userAgent = { contains: userAgent, mode: Prisma.QueryMode.insensitive };
     }
     if (typeof success === 'boolean') {
       where.success = success;
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
     if (allExcludedAgents.length > 0) {
       notFilters.push(
         ...allExcludedAgents.map((agent) => ({
-          userAgent: { contains: agent, mode: 'insensitive' },
+          userAgent: { contains: agent, mode: Prisma.QueryMode.insensitive },
         })),
       );
     }

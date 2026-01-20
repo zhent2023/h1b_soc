@@ -183,6 +183,16 @@ function formatListInput(values: string[]): string {
   return values.join('\n');
 }
 
+function toLocalInputValue(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export default function AuditAdminPage() {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [applied, setApplied] = useState<Filters>(defaultFilters);
@@ -393,6 +403,21 @@ export default function AuditAdminPage() {
     setApplied(defaultFilters);
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(FILTER_STORAGE_KEY);
+    }
+  };
+
+  const handleQuickRange = (days: number) => {
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+    const next: Filters = {
+      ...filters,
+      from: toLocalInputValue(start),
+      to: toLocalInputValue(end),
+    };
+    setFilters(next);
+    setApplied(next);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(next));
     }
   };
 
@@ -706,6 +731,30 @@ export default function AuditAdminPage() {
                   <option value="false">Failure</option>
                 </select>
               </label>
+              <div className={styles.datePresets}>
+                <span className={styles.presetLabel}>Quick range</span>
+                <button
+                  type="button"
+                  className={styles.presetButton}
+                  onClick={() => handleQuickRange(1)}
+                >
+                  Past 24h
+                </button>
+                <button
+                  type="button"
+                  className={styles.presetButton}
+                  onClick={() => handleQuickRange(7)}
+                >
+                  Past 7d
+                </button>
+                <button
+                  type="button"
+                  className={styles.presetButton}
+                  onClick={() => handleQuickRange(30)}
+                >
+                  Past 30d
+                </button>
+              </div>
               <label className={styles.field}>
                 <span>From</span>
                 <input
