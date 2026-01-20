@@ -23,6 +23,7 @@ jobs:
           --health-retries=10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lca_tool
+      ADMIN_EMAILS: ci-admin@example.com
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v3
@@ -40,5 +41,16 @@ jobs:
         run: pnpm prisma migrate deploy
       - name: Prisma seed
         run: pnpm prisma db seed
+      - name: Create admin user for smoke tests
+        run: pnpm admin:add-user -- --email ci-admin@example.com --password AdminPass123!
       - name: Run tests
         run: pnpm test
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Smoke test admin audit
+        env:
+          ADMIN_AUDIT_EMAIL: ci-admin@example.com
+          ADMIN_AUDIT_PASSWORD: AdminPass123!
+          ADMIN_AUDIT_MODE: build
+          ADMIN_AUDIT_PORT: 3102
+        run: pnpm smoke:admin-audit
