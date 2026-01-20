@@ -36,6 +36,22 @@ function getRequestId(req: Request): string {
   return requestId ?? randomUUID();
 }
 
+function parseIgnoreUserAgents(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function shouldIgnoreUserAgent(userAgent: string | null): boolean {
+  if (!userAgent) return false;
+  const ignoreList = parseIgnoreUserAgents(process.env.AUDIT_LOG_IGNORE_USER_AGENTS);
+  if (ignoreList.length === 0) return false;
+  const normalized = userAgent.toLowerCase();
+  return ignoreList.some((entry) => normalized.includes(entry));
+}
+
 function getClientIp(req: Request): string | null {
   const forwardedFor = req.headers.get('x-forwarded-for');
   if (forwardedFor) {
@@ -96,6 +112,10 @@ export async function logAuditEvent({
   }
 
   const { actorType, actorUserId, actorAccessUserId, actorEmail } = resolveActor(access, actor);
+  const userAgent = req.headers.get('user-agent');
+  if (shouldIgnoreUserAgent(userAgent)) {
+    return;
+  }
 
   try {
     await prisma.auditLog.create({
@@ -112,7 +132,7 @@ export async function logAuditEvent({
         statusCode,
         success,
         ipAddress: getClientIp(req),
-        userAgent: req.headers.get('user-agent'),
+        userAgent,
         requestId: getRequestId(req),
         metadata: metadata ?? undefined,
       },

@@ -58,6 +58,8 @@ export async function GET(req: Request) {
     const resourceId = url.searchParams.get('resourceId')?.trim() || '';
     const method = url.searchParams.get('method')?.trim().toUpperCase() || '';
     const path = url.searchParams.get('path')?.trim() || '';
+    const userAgent = url.searchParams.get('userAgent')?.trim() || '';
+    const excludeUserAgent = url.searchParams.get('excludeUserAgent')?.trim() || '';
     const success = parseBool(url.searchParams.get('success'));
     const statusCode = parseStatusCode(url.searchParams.get('statusCode'));
     const from = parseDate(url.searchParams.get('from'));
@@ -82,6 +84,9 @@ export async function GET(req: Request) {
     if (path) {
       where.path = { contains: path, mode: 'insensitive' };
     }
+    if (userAgent) {
+      where.userAgent = { contains: userAgent, mode: 'insensitive' };
+    }
     if (typeof success === 'boolean') {
       where.success = success;
     }
@@ -93,6 +98,18 @@ export async function GET(req: Request) {
         ...(from ? { gte: from } : {}),
         ...(to ? { lte: to } : {}),
       };
+    }
+
+    const excludeAgents = excludeUserAgent
+      ? excludeUserAgent
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      : [];
+    if (excludeAgents.length > 0) {
+      where.NOT = excludeAgents.map((agent) => ({
+        userAgent: { contains: agent, mode: 'insensitive' },
+      }));
     }
 
     const logs = await prisma.auditLog.findMany({
@@ -125,6 +142,8 @@ export async function GET(req: Request) {
           resourceId: resourceId || null,
           method: method || null,
           path: path || null,
+          userAgent: userAgent || null,
+          excludeUserAgent: excludeUserAgent || null,
           success: typeof success === 'boolean' ? success : null,
           statusCode: typeof statusCode === 'number' ? statusCode : null,
           from: from?.toISOString() ?? null,

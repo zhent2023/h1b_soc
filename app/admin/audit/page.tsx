@@ -34,6 +34,8 @@ type Filters = {
   resourceId: string;
   method: string;
   path: string;
+  userAgent: string;
+  excludeUserAgent: string;
   success: 'all' | 'true' | 'false';
   statusCode: string;
   from: string;
@@ -42,6 +44,7 @@ type Filters = {
 };
 
 const DEFAULT_LIMIT = '50';
+const FILTER_STORAGE_KEY = 'adminAuditFilters';
 
 const defaultFilters: Filters = {
   actorEmail: '',
@@ -50,6 +53,8 @@ const defaultFilters: Filters = {
   resourceId: '',
   method: '',
   path: '',
+  userAgent: '',
+  excludeUserAgent: '',
   success: 'all',
   statusCode: '',
   from: '',
@@ -92,6 +97,20 @@ export default function AuditAdminPage() {
     message: string | null;
   }>({ running: false, message: null });
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = window.localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Partial<Filters>;
+      const nextFilters = { ...defaultFilters, ...parsed };
+      setFilters(nextFilters);
+      setApplied(nextFilters);
+    } catch {
+      window.localStorage.removeItem(FILTER_STORAGE_KEY);
+    }
+  }, []);
+
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
     params.set('limit', applied.limit || DEFAULT_LIMIT);
@@ -101,6 +120,8 @@ export default function AuditAdminPage() {
     if (applied.resourceId) params.set('resourceId', applied.resourceId);
     if (applied.method) params.set('method', applied.method);
     if (applied.path) params.set('path', applied.path);
+    if (applied.userAgent) params.set('userAgent', applied.userAgent);
+    if (applied.excludeUserAgent) params.set('excludeUserAgent', applied.excludeUserAgent);
     if (applied.success !== 'all') params.set('success', applied.success);
     if (applied.statusCode) params.set('statusCode', applied.statusCode);
     const fromIso = toIsoString(applied.from);
@@ -149,12 +170,19 @@ export default function AuditAdminPage() {
 
   const handleApply = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setApplied({ ...filters });
+    const next = { ...filters };
+    setApplied(next);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(next));
+    }
   };
 
   const handleReset = () => {
     setFilters(defaultFilters);
     setApplied(defaultFilters);
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(FILTER_STORAGE_KEY);
+    }
   };
 
   const handleCleanup = async () => {
@@ -284,6 +312,29 @@ export default function AuditAdminPage() {
                 setFilters((prev) => ({ ...prev, path: event.target.value }))
               }
               placeholder="/api/v1/..."
+            />
+          </label>
+          <label className={styles.field}>
+            <span>User Agent</span>
+            <input
+              value={filters.userAgent}
+              onChange={(event) =>
+                setFilters((prev) => ({ ...prev, userAgent: event.target.value }))
+              }
+              placeholder="vercel-screenshot"
+            />
+          </label>
+          <label className={styles.field}>
+            <span>Exclude User Agents</span>
+            <input
+              value={filters.excludeUserAgent}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  excludeUserAgent: event.target.value,
+                }))
+              }
+              placeholder="vercel-screenshot,bot"
             />
           </label>
           <label className={styles.field}>
