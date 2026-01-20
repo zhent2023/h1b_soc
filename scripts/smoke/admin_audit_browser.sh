@@ -61,26 +61,49 @@ if [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ]; then
   }
 fi
 
-SNAPSHOT="$(agent-browser snapshot -i)"
+INTERACTIVE_SNAPSHOT="$(agent-browser snapshot -i)"
+TEXT_SNAPSHOT="$(agent-browser snapshot)"
 
-if ! echo "$SNAPSHOT" | grep -q 'button "Run Cleanup"'; then
+if ! echo "$INTERACTIVE_SNAPSHOT" | grep -q 'button "Run Cleanup"'; then
   echo "Missing Run Cleanup button."
-  echo "$SNAPSHOT"
+  echo "$INTERACTIVE_SNAPSHOT"
   exit 1
 fi
 
-if ! echo "$SNAPSHOT" | grep -Eq 'button "(Apply Filters|Loading...)"'; then
+if ! echo "$INTERACTIVE_SNAPSHOT" | grep -Eq 'button "(Apply Filters|Loading...)"'; then
   echo "Missing Apply Filters/Loading button."
-  echo "$SNAPSHOT"
+  echo "$INTERACTIVE_SNAPSHOT"
+  exit 1
+fi
+
+if ! echo "$INTERACTIVE_SNAPSHOT" | grep -q 'button "Delete Matching"'; then
+  echo "Missing Delete Matching button."
+  echo "$INTERACTIVE_SNAPSHOT"
+  exit 1
+fi
+
+if ! echo "$INTERACTIVE_SNAPSHOT" | grep -q 'button "Save Filters"'; then
+  echo "Missing Save Filters button."
+  echo "$INTERACTIVE_SNAPSHOT"
   exit 1
 fi
 
 if [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ]; then
-  if echo "$SNAPSHOT" | grep -q 'link "Go to login"'; then
+  if echo "$INTERACTIVE_SNAPSHOT" | grep -q 'link "Go to login"'; then
     echo "Admin login failed or insufficient permissions."
-    echo "$SNAPSHOT"
+    echo "$INTERACTIVE_SNAPSHOT"
     exit 1
   fi
+fi
+
+if ! echo "$TEXT_SNAPSHOT" | grep -q "Insights"; then
+  echo "Missing Insights section."
+  exit 1
+fi
+
+if ! echo "$TEXT_SNAPSHOT" | grep -q "Noise Filters"; then
+  echo "Missing Noise Filters section."
+  exit 1
 fi
 
 echo "Admin audit page browser smoke test passed."

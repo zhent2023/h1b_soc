@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { AuditActorType, type Prisma, type PrismaClient } from '@prisma/client';
 
 import type { AccessContext } from './access';
+import { getAuditFilterConfig } from './auditFilters';
 
 type AuditActorOverride = {
   type?: AuditActorType;
@@ -36,20 +37,13 @@ function getRequestId(req: Request): string {
   return requestId ?? randomUUID();
 }
 
-function parseIgnoreUserAgents(raw: string | undefined): string[] {
-  if (!raw) return [];
-  return raw
-    .split(',')
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function shouldIgnoreUserAgent(userAgent: string | null): boolean {
-  if (!userAgent) return false;
-  const ignoreList = parseIgnoreUserAgents(process.env.AUDIT_LOG_IGNORE_USER_AGENTS);
-  if (ignoreList.length === 0) return false;
-  const normalized = userAgent.toLowerCase();
-  return ignoreList.some((entry) => normalized.includes(entry));
+function matchesAction(action: string, pattern: string): boolean {
+  if (!pattern) return false;
+  if (pattern.endsWith('*')) {
+    const prefix = pattern.slice(0, -1);
+    return action.startsWith(prefix);
+  }
+  return action === pattern;
 }
 
 function getClientIp(req: Request): string | null {
@@ -113,8 +107,24 @@ export async function logAuditEvent({
 
   const { actorType, actorUserId, actorAccessUserId, actorEmail } = resolveActor(access, actor);
   const userAgent = req.headers.get('user-agent');
-  if (shouldIgnoreUserAgent(userAgent)) {
-    return;
+  try {
+    const config = await getAuditFilterConfig(prisma);
+    const normalizedAction = action.toLowerCase();
+    const normalizedUserAgent = userAgent?.toLowerCase() ?? null;
+    if (normalizedUserAgent) {
+      const ignoredAgent = config.ignoreUserAgents.some((entry) =>
+        normalizedUserAgent.includes(entry),
+      );
+      if (ignoredAgent) return;
+    }
+    if (config.ignoreActions.length > 0) {
+      const ignoredAction = config.ignoreActions.some((entry) =>
+        matchesAction(normalizedAction, entry),
+      );
+      if (ignoredAction) return;
+    }
+  } catch {
+    // If settings lookup fails, proceed with logging.
   }
 
   try {

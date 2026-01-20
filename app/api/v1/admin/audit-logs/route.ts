@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 
 import { getPrisma } from '../../../../../src/db/prisma';
 import { logAuditEvent } from '../../../../../src/lib/auditLog';
+import { getAuditFilterConfig } from '../../../../../src/lib/auditFilters';
 import { requireAdmin } from '../../../../../src/lib/adminAccess';
 import { AccessError, getOptionalAccess } from '../../../../../src/lib/access';
 
@@ -32,11 +33,30 @@ function parseBool(raw: string | null): boolean | undefined {
   return undefined;
 }
 
+function parseCsv(raw: string | null): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function parseStatusCode(raw: string | null): number | undefined {
   if (!raw) return undefined;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return undefined;
   return Math.trunc(parsed);
+}
+
+function buildActionExcludeFilter(entry: string): Prisma.AuditLogWhereInput | null {
+  const trimmed = entry.trim();
+  if (!trimmed) return null;
+  if (trimmed.endsWith('*')) {
+    const prefix = trimmed.slice(0, -1);
+    if (!prefix) return null;
+    return { action: { startsWith: prefix, mode: 'insensitive' } };
+  }
+  return { action: { contains: trimmed, mode: 'insensitive' } };
 }
 
 export async function GET(req: Request) {
@@ -60,6 +80,8 @@ export async function GET(req: Request) {
     const path = url.searchParams.get('path')?.trim() || '';
     const userAgent = url.searchParams.get('userAgent')?.trim() || '';
     const excludeUserAgent = url.searchParams.get('excludeUserAgent')?.trim() || '';
+    const excludeActions = url.searchParams.get('excludeActions')?.trim() || '';
+    const includeIgnored = url.searchParams.get('includeIgnored') === 'true';
     const success = parseBool(url.searchParams.get('success'));
     const statusCode = parseStatusCode(url.searchParams.get('statusCode'));
     const from = parseDate(url.searchParams.get('from'));
@@ -100,16 +122,30 @@ export async function GET(req: Request) {
       };
     }
 
-    const excludeAgents = excludeUserAgent
-      ? excludeUserAgent
-          .split(',')
-          .map((entry) => entry.trim())
-          .filter(Boolean)
-      : [];
-    if (excludeAgents.length > 0) {
-      where.NOT = excludeAgents.map((agent) => ({
-        userAgent: { contains: agent, mode: 'insensitive' },
-      }));
+    const excludeAgents = parseCsv(excludeUserAgent);
+    const excludeActionList = parseCsv(excludeActions);
+    const ignoredConfig = includeIgnored ? null : await getAuditFilterConfig(prisma);
+    const ignoredAgents = ignoredConfig?.ignoreUserAgents ?? [];
+    const ignoredActions = ignoredConfig?.ignoreActions ?? [];
+
+    const allExcludedAgents = [...ignoredAgents, ...excludeAgents];
+    const allExcludedActions = [...ignoredActions, ...excludeActionList];
+    const notFilters: Prisma.AuditLogWhereInput[] = [];
+    if (allExcludedAgents.length > 0) {
+      notFilters.push(
+        ...allExcludedAgents.map((agent) => ({
+          userAgent: { contains: agent, mode: 'insensitive' },
+        })),
+      );
+    }
+    if (allExcludedActions.length > 0) {
+      const actionFilters = allExcludedActions
+        .map((entry) => buildActionExcludeFilter(entry))
+        .filter((filter): filter is Prisma.AuditLogWhereInput => Boolean(filter));
+      notFilters.push(...actionFilters);
+    }
+    if (notFilters.length > 0) {
+      where.NOT = notFilters;
     }
 
     const logs = await prisma.auditLog.findMany({
@@ -144,6 +180,8 @@ export async function GET(req: Request) {
           path: path || null,
           userAgent: userAgent || null,
           excludeUserAgent: excludeUserAgent || null,
+          excludeActions: excludeActions || null,
+          includeIgnored,
           success: typeof success === 'boolean' ? success : null,
           statusCode: typeof statusCode === 'number' ? statusCode : null,
           from: from?.toISOString() ?? null,
