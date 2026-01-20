@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getPrisma } from '../../../../../src/db/prisma';
+import { logAuditEvent } from '../../../../../src/lib/auditLog';
 import { requireAccess } from '../../../../../src/lib/access';
 import { captureDatasetContext } from '../../../../../src/lib/constants';
 import { matchDuties, EmbeddingsNotReadyError, DutiesMatchTimeoutError } from '../../../../../src/lib/match/dutiesMatch';
@@ -86,10 +87,15 @@ async function fetchOnetDetails(
 export async function POST(request: Request) {
   const prisma = getPrisma();
   const start = Date.now();
+  const action = 'match.combined';
   let response: Response | null = null;
+  let access = null;
+  let transcriptCount = 0;
+  let hasDuties = false;
+  let topN = 0;
 
   try {
-    const access = await requireAccess(request, prisma);
+    access = await requireAccess(request, prisma);
     await rateLimitOrThrow({ key: 'match_combined', limitPerMin: 30, req: request });
 
     const body = await request.json();
@@ -105,7 +111,9 @@ export async function POST(request: Request) {
     const uniqueTranscriptIds = Array.from(
       new Set([...transcriptIds, ...(transcriptId ? [transcriptId] : [])]),
     );
-    const topN = clampTopN(body?.top_n, 6);
+    topN = clampTopN(body?.top_n, 6);
+    transcriptCount = uniqueTranscriptIds.length;
+    hasDuties = Boolean(dutiesText);
 
     if (!dutiesText && uniqueTranscriptIds.length === 0) {
       response = NextResponse.json(
@@ -459,6 +467,21 @@ export async function POST(request: Request) {
     logMetric('skills_match_latency_ms', Date.now() - start, {
       route: 'match_combined',
       status: response?.status ?? 500,
+    });
+
+    await logAuditEvent({
+      prisma,
+      req: request,
+      access,
+      action,
+      statusCode: response?.status ?? 500,
+      success: (response?.status ?? 500) < 400,
+      resource: 'match',
+      metadata: {
+        transcriptCount,
+        hasDuties,
+        topN,
+      },
     });
   }
 }

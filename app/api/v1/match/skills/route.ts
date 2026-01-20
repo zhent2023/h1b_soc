@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getPrisma } from '../../../../../src/db/prisma';
+import { logAuditEvent } from '../../../../../src/lib/auditLog';
 import { requireAccess } from '../../../../../src/lib/access';
 import { captureDatasetContext } from '../../../../../src/lib/constants';
 import { logMetric } from '../../../../../src/lib/metrics';
@@ -28,7 +29,11 @@ function parseNumber(raw: string | undefined, fallback: number): number {
 export async function POST(request: Request) {
   const prisma = getPrisma();
   const start = Date.now();
+  const action = 'match.skills';
   let response: Response | null = null;
+  let access = null;
+  let transcriptId = '';
+  let topN = 0;
 
   try {
     if (process.env.FEATURE_SKILL_MATCHING !== 'true') {
@@ -36,7 +41,7 @@ export async function POST(request: Request) {
       return response;
     }
 
-    const access = await requireAccess(request, prisma);
+    access = await requireAccess(request, prisma);
     if (access.source !== 'session') {
       response = NextResponse.json({ error: 'Login required' }, { status: 401 });
       return response;
@@ -45,8 +50,8 @@ export async function POST(request: Request) {
     await rateLimitOrThrow({ key: 'match_skills', limitPerMin: 30, req: request });
 
     const body = await request.json();
-    const transcriptId = typeof body?.transcript_id === 'string' ? body.transcript_id : '';
-    const topN = clampTopN(body?.top_n, 6);
+    transcriptId = typeof body?.transcript_id === 'string' ? body.transcript_id : '';
+    topN = clampTopN(body?.top_n, 6);
 
     if (!transcriptId) {
       response = NextResponse.json({ error: 'transcript_id is required' }, { status: 400 });
@@ -160,6 +165,18 @@ export async function POST(request: Request) {
     logMetric('skills_match_latency_ms', Date.now() - start, {
       route: 'match_skills',
       status: response?.status ?? 500,
+    });
+
+    await logAuditEvent({
+      prisma,
+      req: request,
+      access,
+      action,
+      statusCode: response?.status ?? 500,
+      success: (response?.status ?? 500) < 400,
+      resource: transcriptId ? 'transcript' : 'match',
+      resourceId: transcriptId || null,
+      metadata: topN ? { topN } : undefined,
     });
   }
 }

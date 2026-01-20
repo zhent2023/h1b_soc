@@ -44,6 +44,13 @@ enum TranscriptStatus {
   FAILED
 }
 
+enum AuditActorType {
+  USER
+  ACCESS_USER
+  PUBLIC
+  UNKNOWN
+}
+
 model AccessUser {
   id        String   @id @default(uuid()) @db.Uuid
   email     String
@@ -51,6 +58,7 @@ model AccessUser {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  auditLogs AuditLog[]
 
   @@unique([email])
   @@index([isActive])
@@ -73,6 +81,7 @@ model User {
   updatedAt            DateTime @updatedAt
   sessions             Session[]
   transcripts          Transcript[]
+  auditLogs            AuditLog[]
 }
 
 model Session {
@@ -86,6 +95,35 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model AuditLog {
+  id               String         @id @default(uuid()) @db.Uuid
+  actorType        AuditActorType
+  actorUserId      String?        @db.Uuid
+  actorAccessUserId String?       @db.Uuid
+  actorEmail       String?
+  action           String
+  resource         String?
+  resourceId       String?
+  method           String
+  path             String
+  statusCode       Int
+  success          Boolean        @default(false)
+  ipAddress        String?
+  userAgent        String?
+  requestId        String?
+  metadata         Json?
+  createdAt        DateTime       @default(now())
+
+  actorUser       User?       @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorAccessUser AccessUser? @relation(fields: [actorAccessUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([actorAccessUserId, createdAt])
+  @@index([actorEmail, createdAt])
+  @@index([action, createdAt])
+  @@index([createdAt])
 }
 
 model SkillCatalog {

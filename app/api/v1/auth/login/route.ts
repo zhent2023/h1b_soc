@@ -1,7 +1,10 @@
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 
+import { AuditActorType } from '@prisma/client';
+
 import { getPrisma } from '../../../../../src/db/prisma';
+import { logAuditEvent } from '../../../../../src/lib/auditLog';
 import { rateLimitOrThrow, RateLimitError } from '../../../../../src/lib/rateLimit';
 import {
   createSessionToken,
@@ -14,6 +17,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const prisma = getPrisma();
+  const action = 'auth.login';
 
   try {
     await rateLimitOrThrow({ key: 'auth_login', limitPerMin: 5, req });
@@ -22,7 +26,16 @@ export async function POST(req: Request) {
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+      const response = NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: 400,
+        success: false,
+        metadata: { reason: 'invalid_json' },
+      });
+      return response;
     }
 
     const email =
@@ -35,17 +48,50 @@ export async function POST(req: Request) {
         : '';
 
     if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password required' }, { status: 400 });
+      const response = NextResponse.json(
+        { error: 'Email and password required' },
+        { status: 400 },
+      );
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: 400,
+        success: false,
+        actor: { email: email || null },
+        metadata: { reason: 'missing_credentials' },
+      });
+      return response;
     }
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.isActive) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+      const response = NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: 401,
+        success: false,
+        actor: { email },
+        metadata: { reason: 'invalid_credentials' },
+      });
+      return response;
     }
 
     const matches = await bcrypt.compare(password, user.passwordHash);
     if (!matches) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+      const response = NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: 401,
+        success: false,
+        actor: { email },
+        metadata: { reason: 'invalid_credentials' },
+      });
+      return response;
     }
 
     const token = createSessionToken();
@@ -69,19 +115,60 @@ export async function POST(req: Request) {
       maxAge: SESSION_TTL_SECONDS,
     });
 
+    await logAuditEvent({
+      prisma,
+      req,
+      action,
+      statusCode: 200,
+      success: true,
+      actor: {
+        type: AuditActorType.USER,
+        userId: user.id,
+        email: user.email,
+      },
+      resource: 'session',
+    });
+
     return response;
   } catch (error) {
     if (error instanceof RateLimitError) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Rate limit exceeded' },
         { status: error.status, headers: error.headers },
       );
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: error.status,
+        success: false,
+        metadata: { reason: 'rate_limited' },
+      });
+      return response;
     }
 
     if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      const response = NextResponse.json({ error: error.message }, { status: 400 });
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: 400,
+        success: false,
+        metadata: { reason: 'error', message: error.message },
+      });
+      return response;
     }
 
-    return NextResponse.json({ error: 'Unknown error' }, { status: 500 });
+    const response = NextResponse.json({ error: 'Unknown error' }, { status: 500 });
+    await logAuditEvent({
+      prisma,
+      req,
+      action,
+      statusCode: 500,
+      success: false,
+      metadata: { reason: 'unknown_error' },
+    });
+    return response;
   }
 }

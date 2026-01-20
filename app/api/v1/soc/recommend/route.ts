@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getPrisma } from '../../../../../src/db/prisma';
+import { logAuditEvent } from '../../../../../src/lib/auditLog';
 import { requireAccess } from '../../../../../src/lib/access';
 import { captureDatasetContext } from '../../../../../src/lib/constants';
 import { rateLimitOrThrow, RateLimitError } from '../../../../../src/lib/rateLimit';
@@ -69,13 +70,26 @@ function normalizeDataQualityNotes(
 export async function POST(req: Request) {
   const prisma = getPrisma();
   const startTime = Date.now();
+  const action = 'soc.recommend';
+  let access = null;
+  let rawInputLength = 0;
 
   if (process.env.FEATURE_SOC_RECOMMENDER !== 'true') {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const response = NextResponse.json({ error: 'Not found' }, { status: 404 });
+    await logAuditEvent({
+      prisma,
+      req,
+      action,
+      statusCode: 404,
+      success: false,
+      resource: 'soc',
+      metadata: { reason: 'feature_disabled' },
+    });
+    return response;
   }
 
   try {
-    await requireAccess(req, prisma);
+    access = await requireAccess(req, prisma);
     await rateLimitOrThrow({
       key: 'soc_recommend',
       limitPerMin: parseLimit(process.env.RATE_LIMIT_LOOKUP_PER_MIN, 50),
@@ -84,9 +98,21 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const rawInput = typeof body?.dutiesText === 'string' ? body.dutiesText.trim() : '';
+    rawInputLength = rawInput.length;
 
     if (!rawInput) {
-      return NextResponse.json({ error: 'dutiesText is required' }, { status: 400 });
+      const response = NextResponse.json({ error: 'dutiesText is required' }, { status: 400 });
+      await logAuditEvent({
+        prisma,
+        req,
+        access,
+        action,
+        statusCode: 400,
+        success: false,
+        resource: 'soc',
+        metadata: { reason: 'missing_dutiesText' },
+      });
+      return response;
     }
 
     const internalTopK = parseLimit(process.env.SOC_RECOMMEND_INTERNAL_TOPK, 30);
@@ -368,35 +394,120 @@ export async function POST(req: Request) {
       },
     };
 
-    return NextResponse.json(response);
+    const responseBody = NextResponse.json(response);
+    await logAuditEvent({
+      prisma,
+      req,
+      access,
+      action,
+      statusCode: 200,
+      success: true,
+      resource: 'soc',
+      metadata: {
+        inputLength: rawInputLength,
+        outputTopK,
+        enrichment: {
+          dutiesIncluded,
+          wageIncluded,
+          skippedReason,
+        },
+      },
+    });
+    return responseBody;
   } catch (error) {
     if (error instanceof RateLimitError) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Rate limit exceeded' },
         { status: error.status, headers: error.headers },
       );
+      await logAuditEvent({
+        prisma,
+        req,
+        access,
+        action,
+        statusCode: error.status,
+        success: false,
+        resource: 'soc',
+        metadata: { reason: 'rate_limited' },
+      });
+      return response;
     }
 
     if (error instanceof EmbeddingsNotReadyError) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: error.message, code: error.code },
         { status: error.status },
       );
+      await logAuditEvent({
+        prisma,
+        req,
+        access,
+        action,
+        statusCode: error.status,
+        success: false,
+        resource: 'soc',
+        metadata: { reason: 'embeddings_not_ready', code: error.code },
+      });
+      return response;
     }
 
     if (error instanceof DutiesMatchTimeoutError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      const response = NextResponse.json({ error: error.message }, { status: error.status });
+      await logAuditEvent({
+        prisma,
+        req,
+        access,
+        action,
+        statusCode: error.status,
+        success: false,
+        resource: 'soc',
+        metadata: { reason: 'timeout' },
+      });
+      return response;
     }
 
     if (error instanceof Error && 'status' in error) {
       const status = (error as { status?: number }).status ?? 400;
-      return NextResponse.json({ error: error.message }, { status });
+      const response = NextResponse.json({ error: error.message }, { status });
+      await logAuditEvent({
+        prisma,
+        req,
+        access,
+        action,
+        statusCode: status,
+        success: false,
+        resource: 'soc',
+        metadata: { reason: 'error', message: error.message },
+      });
+      return response;
     }
 
     if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      const response = NextResponse.json({ error: error.message }, { status: 400 });
+      await logAuditEvent({
+        prisma,
+        req,
+        access,
+        action,
+        statusCode: 400,
+        success: false,
+        resource: 'soc',
+        metadata: { reason: 'error', message: error.message },
+      });
+      return response;
     }
 
-    return NextResponse.json({ error: 'Unknown error' }, { status: 500 });
+    const response = NextResponse.json({ error: 'Unknown error' }, { status: 500 });
+    await logAuditEvent({
+      prisma,
+      req,
+      access,
+      action,
+      statusCode: 500,
+      success: false,
+      resource: 'soc',
+      metadata: { reason: 'unknown_error' },
+    });
+    return response;
   }
 }
