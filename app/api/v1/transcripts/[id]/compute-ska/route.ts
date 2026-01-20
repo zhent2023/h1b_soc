@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getPrisma } from '../../../../../../src/db/prisma';
+import { logAuditEvent } from '../../../../../../src/lib/auditLog';
 import { requireAccess } from '../../../../../../src/lib/access';
 import { getCourseEmbeddings } from '../../../../../../src/lib/courses/getCourseEmbeddings';
 import { createEmbeddingProviderFromEnv } from '../../../../../../src/lib/embeddings/providerFactory';
@@ -20,6 +21,8 @@ function parseLimit(raw: string | undefined, fallback: number): number {
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const prisma = getPrisma();
+  const action = 'transcript.compute_ska';
+  let access = null;
 
   try {
     const debugParam = new URL(request.url).searchParams.get('debug') === '1';
@@ -28,12 +31,35 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const captureDebug = debugParam && debugEnabled;
 
     if (process.env.FEATURE_SKILL_MATCHING !== 'true') {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      const response = NextResponse.json({ error: 'Not found' }, { status: 404 });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        action,
+        statusCode: 404,
+        success: false,
+        resource: 'transcript',
+        resourceId: params.id,
+        metadata: { reason: 'feature_disabled' },
+      });
+      return response;
     }
 
-    const access = await requireAccess(request, prisma);
+    access = await requireAccess(request, prisma);
     if (access.source !== 'session') {
-      return NextResponse.json({ error: 'Login required' }, { status: 401 });
+      const response = NextResponse.json({ error: 'Login required' }, { status: 401 });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: 401,
+        success: false,
+        resource: 'transcript',
+        resourceId: params.id,
+        metadata: { reason: 'login_required' },
+      });
+      return response;
     }
 
     await rateLimitOrThrow({
@@ -48,7 +74,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 401 });
+      const response = NextResponse.json({ error: 'User not found' }, { status: 401 });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: 401,
+        success: false,
+        resource: 'transcript',
+        resourceId: params.id,
+        metadata: { reason: 'user_not_found' },
+      });
+      return response;
     }
 
     const transcript = await prisma.transcript.findUnique({
@@ -56,11 +94,35 @@ export async function POST(request: Request, { params }: { params: { id: string 
     });
 
     if (!transcript || transcript.userId !== user.id) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      const response = NextResponse.json({ error: 'Not found' }, { status: 404 });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: 404,
+        success: false,
+        resource: 'transcript',
+        resourceId: params.id,
+        metadata: { reason: 'not_found' },
+      });
+      return response;
     }
 
     if (transcript.status !== 'READY' && transcript.status !== 'NEEDS_REVIEW') {
-      return NextResponse.json({ error: 'Transcript not ready' }, { status: 400 });
+      const response = NextResponse.json({ error: 'Transcript not ready' }, { status: 400 });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: 400,
+        success: false,
+        resource: 'transcript',
+        resourceId: params.id,
+        metadata: { reason: 'transcript_not_ready', status: transcript.status },
+      });
+      return response;
     }
 
     const courses = await prisma.transcriptCourse.findMany({
@@ -83,10 +145,22 @@ export async function POST(request: Request, { params }: { params: { id: string 
     );
 
     if (eligibleCourses.length === 0) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Transcript has no courses with skill evidence' },
         { status: 400 },
       );
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: 400,
+        success: false,
+        resource: 'transcript',
+        resourceId: params.id,
+        metadata: { reason: 'no_skill_evidence', courseCount: courses.length },
+      });
+      return response;
     }
 
     await prisma.transcriptInferredSka.deleteMany({ where: { transcriptId: params.id } });
@@ -121,7 +195,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const results = await mapCoursesToSka(params.id, enrichedCourses, {
       debug: captureDebug ? (entry) => debugEntries.push(entry) : undefined,
     });
-    return NextResponse.json({
+    const response = NextResponse.json({
       evidenceCount: results.length,
       debug: captureDebug
         ? {
@@ -132,23 +206,87 @@ export async function POST(request: Request, { params }: { params: { id: string 
           }
         : undefined,
     });
+    await logAuditEvent({
+      prisma,
+      req: request,
+      access,
+      action,
+      statusCode: 200,
+      success: true,
+      resource: 'transcript',
+      resourceId: params.id,
+      metadata: {
+        evidenceCount: results.length,
+        eligibleCourses: eligibleCourses.length,
+        scoredCourses: enrichedCourses.length,
+      },
+    });
+    return response;
   } catch (error) {
     if (error instanceof RateLimitError) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Rate limit exceeded' },
         { status: error.status, headers: error.headers },
       );
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: error.status,
+        success: false,
+        resource: 'transcript',
+        resourceId: params.id,
+        metadata: { reason: 'rate_limited' },
+      });
+      return response;
     }
 
     if (error instanceof Error && 'status' in error) {
       const status = (error as { status?: number }).status ?? 400;
-      return NextResponse.json({ error: error.message }, { status });
+      const response = NextResponse.json({ error: error.message }, { status });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: status,
+        success: false,
+        resource: 'transcript',
+        resourceId: params.id,
+        metadata: { reason: 'error', message: error.message },
+      });
+      return response;
     }
 
     if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      const response = NextResponse.json({ error: error.message }, { status: 400 });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: 400,
+        success: false,
+        resource: 'transcript',
+        resourceId: params.id,
+        metadata: { reason: 'error', message: error.message },
+      });
+      return response;
     }
 
-    return NextResponse.json({ error: 'Unknown error' }, { status: 500 });
+    const response = NextResponse.json({ error: 'Unknown error' }, { status: 500 });
+    await logAuditEvent({
+      prisma,
+      req: request,
+      access,
+      action,
+      statusCode: 500,
+      success: false,
+      resource: 'transcript',
+      resourceId: params.id,
+      metadata: { reason: 'unknown_error' },
+    });
+    return response;
   }
 }

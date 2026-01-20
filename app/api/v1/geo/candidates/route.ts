@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 
 import { getPrisma } from '../../../../../src/db/prisma';
+import { logAuditEvent } from '../../../../../src/lib/auditLog';
+import { getOptionalAccess } from '../../../../../src/lib/access';
 import { rateLimitOrThrow, RateLimitError } from '../../../../../src/lib/rateLimit';
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   const prisma = getPrisma();
+  const action = 'geo.candidates';
+  const access = await getOptionalAccess(req, prisma);
   const url = new URL(req.url);
   const state = (url.searchParams.get('state') ?? '').trim().toUpperCase();
   const query = (url.searchParams.get('q') ?? '').trim().toLowerCase();
@@ -14,7 +18,18 @@ export async function GET(req: Request) {
   const cursor = (url.searchParams.get('cursor') ?? '').trim();
 
   if (!state) {
-    return NextResponse.json({ error: 'state is required' }, { status: 400 });
+    const response = NextResponse.json({ error: 'state is required' }, { status: 400 });
+    await logAuditEvent({
+      prisma,
+      req,
+      access,
+      action,
+      statusCode: 400,
+      success: false,
+      resource: 'geo',
+      metadata: { reason: 'missing_state' },
+    });
+    return response;
   }
 
   try {
@@ -26,10 +41,21 @@ export async function GET(req: Request) {
     });
   } catch (error) {
     if (error instanceof RateLimitError) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Rate limit exceeded' },
         { status: error.status, headers: error.headers },
       );
+      await logAuditEvent({
+        prisma,
+        req,
+        access,
+        action,
+        statusCode: error.status,
+        success: false,
+        resource: 'geo',
+        metadata: { reason: 'rate_limited' },
+      });
+      return response;
     }
     throw error;
   }
@@ -39,7 +65,21 @@ export async function GET(req: Request) {
   });
 
   if (!datasetVersion) {
-    return NextResponse.json({ error: 'Active OFLC dataset version not found' }, { status: 500 });
+    const response = NextResponse.json(
+      { error: 'Active OFLC dataset version not found' },
+      { status: 500 },
+    );
+    await logAuditEvent({
+      prisma,
+      req,
+      access,
+      action,
+      statusCode: 500,
+      success: false,
+      resource: 'geo',
+      metadata: { reason: 'dataset_missing' },
+    });
+    return response;
   }
 
   const limitRaw = limitParam ? Number(limitParam) : 50;
@@ -81,8 +121,19 @@ export async function GET(req: Request) {
   }));
   const nextCursor = results.length > limit ? results[limit - 1]?.id : undefined;
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     items,
     nextCursor,
   });
+  await logAuditEvent({
+    prisma,
+    req,
+    access,
+    action,
+    statusCode: 200,
+    success: true,
+    resource: 'geo',
+    metadata: { state, queryPresent: Boolean(query), limit },
+  });
+  return response;
 }

@@ -6,6 +6,8 @@ import { getCookieValue, hashSessionToken, SESSION_COOKIE_NAME } from './session
 export interface AccessContext {
   email: string;
   source?: 'public' | 'session' | 'api_key';
+  userId?: string;
+  accessUserId?: string;
 }
 
 export class AccessError extends Error {
@@ -43,7 +45,11 @@ export async function requireAccess(
     });
 
     if (session?.user?.email) {
-      return { email: session.user.email, source: 'session' };
+      return {
+        email: session.user.email,
+        source: 'session',
+        userId: session.user.id,
+      };
     }
   }
 
@@ -71,5 +77,21 @@ export async function requireAccess(
     throw new AccessError('Access denied', 403);
   }
 
-  return { email: accessUser.email, source: 'api_key' };
+  return {
+    email: accessUser.email,
+    source: 'api_key',
+    accessUserId: accessUser.id,
+  };
+}
+
+export async function getOptionalAccess(
+  req: Request,
+  prisma: PrismaClient,
+): Promise<AccessContext | null> {
+  try {
+    const access = await requireAccess(req, prisma);
+    return access.source === 'public' ? null : access;
+  } catch {
+    return null;
+  }
 }

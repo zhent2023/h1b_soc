@@ -1,7 +1,10 @@
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 
+import { AuditActorType } from '@prisma/client';
+
 import { getPrisma } from '../../../../../src/db/prisma';
+import { logAuditEvent } from '../../../../../src/lib/auditLog';
 import { parseRegisterBody } from '../../../../../src/lib/authRegister';
 import { rateLimitOrThrow, RateLimitError } from '../../../../../src/lib/rateLimit';
 import {
@@ -23,6 +26,7 @@ function getRequestIp(req: Request): string | null {
 
 export async function POST(req: Request) {
   const prisma = getPrisma();
+  const action = 'auth.register';
 
   try {
     await rateLimitOrThrow({ key: 'auth_register', limitPerMin: 5, req });
@@ -31,18 +35,49 @@ export async function POST(req: Request) {
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+      const response = NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: 400,
+        success: false,
+        metadata: { reason: 'invalid_json' },
+      });
+      return response;
     }
 
     const parsed = parseRegisterBody(body);
     if (!parsed.ok) {
-      return NextResponse.json({ error: parsed.error }, { status: 400 });
+      const response = NextResponse.json({ error: parsed.error }, { status: 400 });
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: 400,
+        success: false,
+        metadata: { reason: 'invalid_body', message: parsed.error },
+      });
+      return response;
     }
 
     const { email, password, fullName, lawFirm, marketingConsent } = parsed.data;
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return NextResponse.json({ error: 'Email is already registered.' }, { status: 409 });
+      const response = NextResponse.json(
+        { error: 'Email is already registered.' },
+        { status: 409 },
+      );
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: 409,
+        success: false,
+        actor: { email },
+        metadata: { reason: 'email_exists' },
+      });
+      return response;
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -92,19 +127,62 @@ export async function POST(req: Request) {
       maxAge: SESSION_TTL_SECONDS,
     });
 
+    await logAuditEvent({
+      prisma,
+      req,
+      action,
+      statusCode: 200,
+      success: true,
+      actor: {
+        type: AuditActorType.USER,
+        userId: user.id,
+        email: user.email,
+      },
+      resource: 'user',
+      resourceId: user.id,
+      metadata: { marketingConsent },
+    });
+
     return response;
   } catch (error) {
     if (error instanceof RateLimitError) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Rate limit exceeded' },
         { status: error.status, headers: error.headers },
       );
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: error.status,
+        success: false,
+        metadata: { reason: 'rate_limited' },
+      });
+      return response;
     }
 
     if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      const response = NextResponse.json({ error: error.message }, { status: 400 });
+      await logAuditEvent({
+        prisma,
+        req,
+        action,
+        statusCode: 400,
+        success: false,
+        metadata: { reason: 'error', message: error.message },
+      });
+      return response;
     }
 
-    return NextResponse.json({ error: 'Unknown error' }, { status: 500 });
+    const response = NextResponse.json({ error: 'Unknown error' }, { status: 500 });
+    await logAuditEvent({
+      prisma,
+      req,
+      action,
+      statusCode: 500,
+      success: false,
+      metadata: { reason: 'unknown_error' },
+    });
+    return response;
   }
 }

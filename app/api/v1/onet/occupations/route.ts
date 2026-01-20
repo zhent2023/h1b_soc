@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { getPrisma } from '../../../../../src/db/prisma';
+import { logAuditEvent } from '../../../../../src/lib/auditLog';
+import { getOptionalAccess } from '../../../../../src/lib/access';
 
 export const runtime = "nodejs";
 
@@ -13,12 +15,25 @@ function parseLimit(raw: string | null): number {
 
 export async function GET(req: Request) {
   const prisma = getPrisma();
+  const action = 'onet.occupations';
+  const access = await getOptionalAccess(req, prisma);
   const url = new URL(req.url);
   const query = (url.searchParams.get('q') ?? '').trim();
   const limit = parseLimit(url.searchParams.get('limit'));
 
   if (!query) {
-    return NextResponse.json({ items: [] });
+    const response = NextResponse.json({ items: [] });
+    await logAuditEvent({
+      prisma,
+      req,
+      access,
+      action,
+      statusCode: 200,
+      success: true,
+      resource: 'onet',
+      metadata: { queryPresent: false },
+    });
+    return response;
   }
 
   const datasetVersion = await prisma.datasetVersion.findFirst({
@@ -26,7 +41,21 @@ export async function GET(req: Request) {
   });
 
   if (!datasetVersion) {
-    return NextResponse.json({ error: 'Active O*NET dataset version not found' }, { status: 500 });
+    const response = NextResponse.json(
+      { error: 'Active O*NET dataset version not found' },
+      { status: 500 },
+    );
+    await logAuditEvent({
+      prisma,
+      req,
+      access,
+      action,
+      statusCode: 500,
+      success: false,
+      resource: 'onet',
+      metadata: { reason: 'dataset_missing' },
+    });
+    return response;
   }
 
   const [codeMatches, titleMatches] = await Promise.all([
@@ -59,5 +88,16 @@ export async function GET(req: Request) {
     return true;
   });
 
-  return NextResponse.json({ items: merged.slice(0, limit) });
+  const response = NextResponse.json({ items: merged.slice(0, limit) });
+  await logAuditEvent({
+    prisma,
+    req,
+    access,
+    action,
+    statusCode: 200,
+    success: true,
+    resource: 'onet',
+    metadata: { queryPresent: true, limit, resultCount: merged.length },
+  });
+  return response;
 }

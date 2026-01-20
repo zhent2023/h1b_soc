@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
 
 import { getPrisma } from '../../../../../src/db/prisma';
+import { logAuditEvent } from '../../../../../src/lib/auditLog';
 import { requireAccess } from '../../../../../src/lib/access';
 import { rateLimitOrThrow, RateLimitError } from '../../../../../src/lib/rateLimit';
 import { createStorageProviderFromEnv } from '../../../../../src/lib/storage';
@@ -22,11 +23,23 @@ function parseMaxBytes(): number {
 
 export async function POST(request: Request) {
   const prisma = getPrisma();
+  const action = 'transcript.create';
+  let access = null;
 
   try {
-    const access = await requireAccess(request, prisma);
+    access = await requireAccess(request, prisma);
     if (access.source !== 'session') {
-      return NextResponse.json({ error: 'Login required' }, { status: 401 });
+      const response = NextResponse.json({ error: 'Login required' }, { status: 401 });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: 401,
+        success: false,
+        metadata: { reason: 'login_required' },
+      });
+      return response;
     }
 
     await rateLimitOrThrow({
@@ -41,7 +54,17 @@ export async function POST(request: Request) {
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 401 });
+      const response = NextResponse.json({ error: 'User not found' }, { status: 401 });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: 401,
+        success: false,
+        metadata: { reason: 'user_not_found' },
+      });
+      return response;
     }
 
     const transcriptId = randomUUID();
@@ -68,27 +91,78 @@ export async function POST(request: Request) {
       }),
     ]);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       transcriptId,
       upload: uploadTarget,
     });
+    await logAuditEvent({
+      prisma,
+      req: request,
+      access,
+      action,
+      statusCode: 200,
+      success: true,
+      resource: 'transcript',
+      resourceId: transcriptId,
+    });
+    return response;
   } catch (error) {
     if (error instanceof RateLimitError) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Rate limit exceeded' },
         { status: error.status, headers: error.headers },
       );
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: error.status,
+        success: false,
+        metadata: { reason: 'rate_limited' },
+      });
+      return response;
     }
 
     if (error instanceof Error && 'status' in error) {
       const status = (error as { status?: number }).status ?? 400;
-      return NextResponse.json({ error: error.message }, { status });
+      const response = NextResponse.json({ error: error.message }, { status });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: status,
+        success: false,
+        metadata: { reason: 'error', message: error.message },
+      });
+      return response;
     }
 
     if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      const response = NextResponse.json({ error: error.message }, { status: 400 });
+      await logAuditEvent({
+        prisma,
+        req: request,
+        access,
+        action,
+        statusCode: 400,
+        success: false,
+        metadata: { reason: 'error', message: error.message },
+      });
+      return response;
     }
 
-    return NextResponse.json({ error: 'Unknown error' }, { status: 500 });
+    const response = NextResponse.json({ error: 'Unknown error' }, { status: 500 });
+    await logAuditEvent({
+      prisma,
+      req: request,
+      access,
+      action,
+      statusCode: 500,
+      success: false,
+      metadata: { reason: 'unknown_error' },
+    });
+    return response;
   }
 }
