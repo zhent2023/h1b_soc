@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 
 import styles from './page.module.css';
 
@@ -94,6 +94,7 @@ type Filters = {
 
 const DEFAULT_LIMIT = '50';
 const FILTER_STORAGE_KEY = 'adminAuditFilters';
+const DETAILS_COLUMNS = 7;
 
 const defaultFilters: Filters = {
   actorEmail: '',
@@ -204,6 +205,7 @@ export default function AuditAdminPage() {
   const [insights, setInsights] = useState<AuditInsights | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [config, setConfig] = useState<AuditFilterConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
@@ -320,6 +322,9 @@ export default function AuditAdminPage() {
         const data = (await response.json()) as AuditLogResponse;
         setLogs((prev) => (append ? [...prev, ...data.items] : data.items));
         setNextCursor(data.nextCursor ?? null);
+        if (!append) {
+          setExpandedLogId(null);
+        }
       } catch (fetchError) {
         const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
         setError(message);
@@ -1068,66 +1073,94 @@ export default function AuditAdminPage() {
                     </thead>
                     <tbody>
                       {logs.map((log) => (
-                        <tr key={log.id}>
-                          <td className={styles.mono}>
-                            {formatTimestamp(log.createdAt)}
-                          </td>
-                          <td>
-                            <div className={styles.actor}>
-                              <span className={styles.actorType}>{log.actorType}</span>
-                              <span className={styles.actorEmail}>
-                                {log.actorEmail || '-'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className={styles.mono}>{log.action}</td>
-                          <td className={styles.mono}>
-                            {log.resource || '-'}
-                            {log.resourceId ? `:${log.resourceId}` : ''}
-                          </td>
-                          <td>
-                            <span
-                              className={
-                                log.success ? styles.statusOk : styles.statusFail
-                              }
-                            >
-                              {log.statusCode}
-                            </span>
-                          </td>
-                          <td className={styles.mono}>
-                            {log.method} {log.path}
-                          </td>
-                          <td>
-                            <details className={styles.details}>
-                              <summary>View</summary>
-                              <div className={styles.detailsBody}>
-                                <p>
-                                  <strong>Request ID:</strong>{' '}
-                                  <span className={styles.mono}>
-                                    {log.requestId || '-'}
-                                  </span>
-                                </p>
-                                <p>
-                                  <strong>IP:</strong>{' '}
-                                  <span className={styles.mono}>
-                                    {log.ipAddress || '-'}
-                                  </span>
-                                </p>
-                                <p>
-                                  <strong>User Agent:</strong>{' '}
-                                  <span className={styles.mono}>
-                                    {log.userAgent || '-'}
-                                  </span>
-                                </p>
-                                {log.metadata ? (
-                                  <pre className={styles.meta}>
-                                    {formatMetadata(log.metadata)}
-                                  </pre>
-                                ) : null}
+                        <Fragment key={log.id}>
+                          <tr>
+                            <td className={styles.mono}>
+                              {formatTimestamp(log.createdAt)}
+                            </td>
+                            <td>
+                              <div className={styles.actor}>
+                                <span className={styles.actorType}>
+                                  {log.actorType}
+                                </span>
+                                <span className={styles.actorEmail}>
+                                  {log.actorEmail || '-'}
+                                </span>
                               </div>
-                            </details>
-                          </td>
-                        </tr>
+                            </td>
+                            <td className={styles.mono}>{log.action}</td>
+                            <td className={styles.mono}>
+                              {log.resource || '-'}
+                              {log.resourceId ? `:${log.resourceId}` : ''}
+                            </td>
+                            <td>
+                              <span
+                                className={
+                                  log.success ? styles.statusOk : styles.statusFail
+                                }
+                              >
+                                {log.statusCode}
+                              </span>
+                            </td>
+                            <td className={styles.mono}>
+                              {log.method} {log.path}
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className={styles.detailsToggle}
+                                onClick={() =>
+                                  setExpandedLogId((prev) =>
+                                    prev === log.id ? null : log.id,
+                                  )
+                                }
+                              >
+                                {expandedLogId === log.id ? 'Hide' : 'View'}
+                              </button>
+                            </td>
+                          </tr>
+                          {expandedLogId === log.id ? (
+                            <tr className={styles.detailsRow}>
+                              <td colSpan={DETAILS_COLUMNS}>
+                                <div className={styles.detailsCard}>
+                                  <div className={styles.detailsGrid}>
+                                    <div>
+                                      <p className={styles.detailsLabel}>
+                                        Request ID
+                                      </p>
+                                      <p
+                                        className={`${styles.detailsValue} ${styles.mono}`}
+                                      >
+                                        {log.requestId || '-'}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className={styles.detailsLabel}>IP</p>
+                                      <p
+                                        className={`${styles.detailsValue} ${styles.mono}`}
+                                      >
+                                        {log.ipAddress || '-'}
+                                      </p>
+                                    </div>
+                                    <div className={styles.detailsWide}>
+                                      <p className={styles.detailsLabel}>User Agent</p>
+                                      <p
+                                        className={`${styles.detailsValue} ${styles.mono}`}
+                                      >
+                                        {log.userAgent || '-'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {log.metadata ? (
+                                    <pre className={styles.meta}>
+                                      {formatMetadata(log.metadata)}
+                                    </pre>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
