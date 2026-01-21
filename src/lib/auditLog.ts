@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { AuditActorType, type Prisma, type PrismaClient } from '@prisma/client';
 
 import type { AccessContext } from './access';
+import { getAuditFilterConfig } from './auditFilters';
 
 type AuditActorOverride = {
   type?: AuditActorType;
@@ -34,6 +35,15 @@ function getRequestPath(req: Request): string {
 function getRequestId(req: Request): string {
   const requestId = req.headers.get('x-request-id') ?? req.headers.get('x-vercel-id');
   return requestId ?? randomUUID();
+}
+
+function matchesAction(action: string, pattern: string): boolean {
+  if (!pattern) return false;
+  if (pattern.endsWith('*')) {
+    const prefix = pattern.slice(0, -1);
+    return action.startsWith(prefix);
+  }
+  return action === pattern;
 }
 
 function getClientIp(req: Request): string | null {
@@ -96,6 +106,26 @@ export async function logAuditEvent({
   }
 
   const { actorType, actorUserId, actorAccessUserId, actorEmail } = resolveActor(access, actor);
+  const userAgent = req.headers.get('user-agent');
+  try {
+    const config = await getAuditFilterConfig(prisma);
+    const normalizedAction = action.toLowerCase();
+    const normalizedUserAgent = userAgent?.toLowerCase() ?? null;
+    if (normalizedUserAgent) {
+      const ignoredAgent = config.ignoreUserAgents.some((entry) =>
+        normalizedUserAgent.includes(entry),
+      );
+      if (ignoredAgent) return;
+    }
+    if (config.ignoreActions.length > 0) {
+      const ignoredAction = config.ignoreActions.some((entry) =>
+        matchesAction(normalizedAction, entry),
+      );
+      if (ignoredAction) return;
+    }
+  } catch {
+    // If settings lookup fails, proceed with logging.
+  }
 
   try {
     await prisma.auditLog.create({
@@ -112,7 +142,7 @@ export async function logAuditEvent({
         statusCode,
         success,
         ipAddress: getClientIp(req),
-        userAgent: req.headers.get('user-agent'),
+        userAgent,
         requestId: getRequestId(req),
         metadata: metadata ?? undefined,
       },

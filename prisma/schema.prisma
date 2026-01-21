@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  engineType = "binary"
 }
 
 datasource db {
@@ -124,6 +125,14 @@ model AuditLog {
   @@index([actorEmail, createdAt])
   @@index([action, createdAt])
   @@index([createdAt])
+}
+
+model AdminSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SkillCatalog {
