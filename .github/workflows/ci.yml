@@ -24,6 +24,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lca_tool
       ADMIN_EMAILS: ci-admin@example.com
+      PRISMA_QUERY_ENGINE_TYPE: binary
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v3

@@ -7,6 +7,8 @@ const prisma = new PrismaClient();
 
 describe('lookup integration', () => {
   const previousProvider = process.env.GEOCODER_PROVIDER;
+  const defaultWageYear = process.env.DEFAULT_WAGE_YEAR ?? '2025-2026';
+  const defaultIsAcwia = (process.env.DEFAULT_IS_ACWIA ?? 'false') === 'true';
   let onetVersionId = '';
   let oflcVersionId = '';
   let onet8WithDuties = '';
@@ -21,6 +23,7 @@ describe('lookup integration', () => {
       select: { onetCode: true },
       distinct: ['onetCode'],
       take: 50,
+      orderBy: { onetCode: 'asc' },
     });
 
     for (const candidate of candidates) {
@@ -30,9 +33,27 @@ describe('lookup integration', () => {
         where: { datasetVersionId: oflcVersionId, socCode: soc6 },
         select: { socCode: true },
       });
-      if (socExists) {
-        return candidate.onetCode;
-      }
+      if (!socExists) continue;
+      const wageCount = await prisma.wageRate.count({
+        where: {
+          datasetVersionId: oflcVersionId,
+          wageYear: defaultWageYear,
+          isAcwia: defaultIsAcwia,
+          socCode: soc6,
+        },
+      });
+      if (wageCount < 8) continue;
+      const hasAreaWage = await prisma.wageRate.findFirst({
+        where: {
+          datasetVersionId: oflcVersionId,
+          wageYear: defaultWageYear,
+          isAcwia: defaultIsAcwia,
+          areaCode: '14460',
+          socCode: soc6,
+        },
+        select: { socCode: true },
+      });
+      if (hasAreaWage) return candidate.onetCode;
     }
     return '';
   }
@@ -71,7 +92,7 @@ describe('lookup integration', () => {
 
     onet8WithDuties = await findOnet8WithDuties();
     if (!onet8WithDuties) {
-      throw new Error('No O*NET 8-digit duties found for an active SOC.');
+      throw new Error('No O*NET 8-digit duties found with at least 8 wage rows.');
     }
     onet8Missing = await findMissingOnet8Code(onet8WithDuties.split('.')[0] ?? '');
   });
