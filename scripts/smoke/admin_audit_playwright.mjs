@@ -1,4 +1,6 @@
-import { chromium } from 'playwright';
+// We depend on `@playwright/test` (not `playwright`) in this repo.
+// Importing from `@playwright/test` keeps CI/lightweight installs working.
+import { chromium } from '@playwright/test';
 
 const port = process.env.ADMIN_AUDIT_PORT || '3102';
 const baseUrl =
@@ -20,11 +22,46 @@ const page = await browser.newPage();
 
 try {
   if (email && password) {
-    await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
-    await page.getByTestId('login-email').fill(email);
-    await page.getByTestId('login-password').fill(password);
-    await page.getByTestId('login-submit').click();
-    await page.waitForLoadState('networkidle');
+    // Avoid relying on Next.js client-side hydration for form submission.
+    // Directly call the login API so cookies are set deterministically in CI.
+    await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
+    const loginResult = await page.evaluate(
+      async ({ email, password }) => {
+        const res = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, password }),
+        });
+        const text = await res.text();
+        return { ok: res.ok, status: res.status, text };
+      },
+      { email, password },
+    );
+
+    if (!loginResult.ok) {
+      throw new Error(`Login failed (${loginResult.status}): ${loginResult.text}`);
+    }
+
+    const meResult = await page.evaluate(async () => {
+      const res = await fetch('/api/v1/auth/me', { credentials: 'include' });
+      const text = await res.text();
+      return { ok: res.ok, status: res.status, text };
+    });
+    if (!meResult.ok) {
+      throw new Error(`Auth check failed (${meResult.status}): ${meResult.text}`);
+    }
+
+    const adminConfigResult = await page.evaluate(async () => {
+      const res = await fetch('/api/v1/admin/audit-logs/config', { credentials: 'include' });
+      const text = await res.text();
+      return { ok: res.ok, status: res.status, text };
+    });
+    if (!adminConfigResult.ok) {
+      throw new Error(
+        `Admin audit config not accessible (${adminConfigResult.status}): ${adminConfigResult.text}`,
+      );
+    }
   }
 
   await page.goto(`${baseUrl}/admin/audit`, { waitUntil: 'networkidle' });

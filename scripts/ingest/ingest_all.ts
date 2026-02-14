@@ -3,11 +3,14 @@ import { spawn } from 'child_process';
 
 import { PrismaClient } from '@prisma/client';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import { downloadToCache } from './lib/download';
 import { resolveOflcWageZipUrl } from './sources/oflc';
 import { resolveOnetDbTextZipUrl } from './sources/onet';
 import { resolveCountyGazetteerZipUrl } from './sources/county_gazetteer';
 import { resolveCityCountyCsvUrl } from './sources/city_county';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 const ROOT_DIR = path.resolve(__dirname, '../..');

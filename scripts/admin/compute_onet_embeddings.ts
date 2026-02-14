@@ -1,9 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import { computeOnetEmbeddings } from '../../src/lib/embeddings/computeOnetEmbeddings';
 import { EMBEDDING_DIM } from '../../src/lib/embeddings/constants';
 import { createEmbeddingProviderFromEnv } from '../../src/lib/embeddings/providerFactory';
 import { validateVectorDimension } from '../../src/lib/embeddings/vectorUtils';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 const LOCK_ID = 482901;

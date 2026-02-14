@@ -68,7 +68,7 @@ This map lists the exact files and symbols to reuse for auth, rate limit, datase
 ## CI / test DB setup
 - `.github/workflows/ci.yml` runs tests in GitHub Actions.
 - CI Postgres service uses `pgvector/pgvector:pg16`.
-- `docker-compose.yml` uses `postgres:16` (no pgvector by default) for local dev.
+- `docker-compose.yml` uses `pgvector/pgvector:pg16` for local dev (pgvector enabled).
 
 ## Test commands
 

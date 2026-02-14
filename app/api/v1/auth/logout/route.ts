@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 
 import { getPrisma } from '../../../../../src/db/prisma';
 import { logAuditEvent } from '../../../../../src/lib/auditLog';
-import { getCookieValue, hashSessionToken, SESSION_COOKIE_NAME } from '../../../../../src/lib/session';
+import {
+  getCookieValue,
+  hashSessionToken,
+  SESSION_COOKIE_NAME,
+  shouldUseSecureSessionCookie,
+} from '../../../../../src/lib/session';
 
 export const runtime = "nodejs";
 
@@ -31,7 +36,7 @@ export async function POST(req: Request) {
   const response = NextResponse.json({ success: true });
   response.cookies.set(SESSION_COOKIE_NAME, '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: shouldUseSecureSessionCookie(req),
     sameSite: 'lax',
     path: '/',
     maxAge: 0,

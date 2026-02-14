@@ -10,6 +10,7 @@ import {
   createSessionToken,
   hashSessionToken,
   SESSION_COOKIE_NAME,
+  shouldUseSecureSessionCookie,
   SESSION_TTL_SECONDS,
 } from '../../../../../src/lib/session';
 
@@ -109,7 +110,7 @@ export async function POST(req: Request) {
     const response = NextResponse.json({ success: true, email: user.email });
     response.cookies.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: shouldUseSecureSessionCookie(req),
       sameSite: 'lax',
       path: '/',
       maxAge: SESSION_TTL_SECONDS,

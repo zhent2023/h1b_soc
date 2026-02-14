@@ -1,9 +1,13 @@
 import { PrismaClient } from '@prisma/client';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
+
 import type { AcceptanceContext } from './types';
 import { runCommand } from './utils';
 
 export const name = 'A data ingest';
+
+ensurePrismaEngineStartupLogs();
 
 export async function run(ctx: AcceptanceContext): Promise<void> {
   const baseArgs: string[] = ['pnpm ingest:all', '--', '--wageYear', ctx.wageYear, '--activate'];

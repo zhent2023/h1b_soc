@@ -2,6 +2,7 @@ import path from 'path';
 
 import { PrismaClient } from '@prisma/client';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import {
   ZipEntry,
   getField,
@@ -10,6 +11,8 @@ import {
   parseCsvStream,
   resolveZipPath,
 } from './utils';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 

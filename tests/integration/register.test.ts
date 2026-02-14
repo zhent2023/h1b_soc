@@ -3,6 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { POST } from '../../app/api/v1/auth/register/route';
 import { GET as authMe } from '../../app/api/v1/auth/me/route';
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 

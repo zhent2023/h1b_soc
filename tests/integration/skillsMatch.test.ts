@@ -2,8 +2,11 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { POST } from '../../app/api/v1/match/skills/route';
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import { createSessionToken, hashSessionToken } from '../../src/lib/session';
 import { resetOccupationRequirementsCache } from '../../src/lib/ska/occupationRequirementsCache';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 
