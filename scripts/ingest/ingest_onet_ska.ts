@@ -5,9 +5,12 @@ import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 
 import { getField, inferDelimiter, parseCsvStream } from './utils';
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import { createEmbeddingProviderFromEnv } from '../../src/lib/embeddings/providerFactory';
 import { embedBatch } from '../../src/lib/embeddings/embedBatch';
 import { toVectorLiteral } from '../../src/lib/embeddings/vectorUtils';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 

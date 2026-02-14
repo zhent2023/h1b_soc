@@ -1,9 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import { beforeAll, afterAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import { computeOnetEmbeddings } from '../../src/lib/embeddings/computeOnetEmbeddings';
 import { EMBEDDING_DIM } from '../../src/lib/embeddings/constants';
 import { createStubProvider } from '../../src/lib/embeddings/providerStub';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 

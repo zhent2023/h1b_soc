@@ -2,6 +2,10 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
+
+ensurePrismaEngineStartupLogs();
+
 function getArgValue(flag: string): string | null {
   const idx = process.argv.indexOf(flag);
   if (idx !== -1 && process.argv[idx + 1]) {

@@ -2,7 +2,11 @@ import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import { EMBEDDING_DIM } from '../../src/lib/embeddings/constants';
+
+ensurePrismaEngineStartupLogs();
+
 const prisma = new PrismaClient();
 
 describe('embedding schema integration', () => {

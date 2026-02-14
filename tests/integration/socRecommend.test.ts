@@ -2,8 +2,11 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { POST } from '../../app/api/v1/soc/recommend/route';
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import { computeOnetEmbeddings } from '../../src/lib/embeddings/computeOnetEmbeddings';
 import { createStubProvider } from '../../src/lib/embeddings/providerStub';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 
@@ -229,6 +232,30 @@ describe('soc recommend API', () => {
     expect(typeof item.confidence).toBe('number');
     expect(item.confidence).toBeGreaterThanOrEqual(0);
     expect(item.confidence).toBeLessThanOrEqual(1);
+    expect(item.wageLevel1Hourly === null || typeof item.wageLevel1Hourly === 'string').toBe(
+      true,
+    );
+    expect(item.wageLevel1Annual === null || typeof item.wageLevel1Annual === 'number').toBe(
+      true,
+    );
+    expect(item.wageLevel2Hourly === null || typeof item.wageLevel2Hourly === 'string').toBe(
+      true,
+    );
+    expect(item.wageLevel2Annual === null || typeof item.wageLevel2Annual === 'number').toBe(
+      true,
+    );
+    expect(item.wageLevel3Hourly === null || typeof item.wageLevel3Hourly === 'string').toBe(
+      true,
+    );
+    expect(item.wageLevel3Annual === null || typeof item.wageLevel3Annual === 'number').toBe(
+      true,
+    );
+    expect(item.wageLevel4Hourly === null || typeof item.wageLevel4Hourly === 'string').toBe(
+      true,
+    );
+    expect(item.wageLevel4Annual === null || typeof item.wageLevel4Annual === 'number').toBe(
+      true,
+    );
     expect(item.wageYear === null || typeof item.wageYear === 'string').toBe(true);
     expect(
       item.wageDataQualityNotes === null || typeof item.wageDataQualityNotes === 'object',

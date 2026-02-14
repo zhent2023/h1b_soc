@@ -42,6 +42,12 @@ type SocRecommendItem = {
   dutiesAvailable: boolean;
   wageLevel1Hourly: string | null;
   wageLevel1Annual: number | null;
+  wageLevel2Hourly: string | null;
+  wageLevel2Annual: number | null;
+  wageLevel3Hourly: string | null;
+  wageLevel3Annual: number | null;
+  wageLevel4Hourly: string | null;
+  wageLevel4Annual: number | null;
   wageYear: string | null;
   wageAreaCode: string | null;
   wageIsAcwia: boolean | null;
@@ -2869,11 +2875,14 @@ export default function HomePage() {
                           const isSelected = recommendSelected?.code === item.matchedOnetCode;
                           const confidenceValue =
                             item.confidence ?? item.similarity;
-                          const wagePreview = item.wageAvailable
-                            ? `${formatHourly(item.wageLevel1Hourly)} / hr | ${formatAnnual(
-                              item.wageLevel1Annual,
-                            )} / yr`
-                            : 'No wage available';
+                          const wageLevels = item.wageAvailable
+                            ? [
+                              { label: 'I', hourly: item.wageLevel1Hourly, annual: item.wageLevel1Annual },
+                              { label: 'II', hourly: item.wageLevel2Hourly, annual: item.wageLevel2Annual },
+                              { label: 'III', hourly: item.wageLevel3Hourly, annual: item.wageLevel3Annual },
+                              { label: 'IV', hourly: item.wageLevel4Hourly, annual: item.wageLevel4Annual },
+                            ]
+                            : null;
                           return (
                             <div
                               key={item.matchedOnetCode}
@@ -2910,8 +2919,21 @@ export default function HomePage() {
                               </div>
                               <div className={styles.recommenderWage}>
                                 <div className={styles.recommenderWageText} data-testid="soc-recommend-wage">
-                                  <span className={styles.recommenderWageLabel}>Lv1 Prevailing Wage:</span>
-                                  <span className={styles.recommenderWageValue}>{wagePreview}</span>
+                                  <span className={styles.recommenderWageLabel}>Prevailing Wage:</span>
+                                  {wageLevels ? (
+                                    <div className={styles.recommenderWageLevels}>
+                                      {wageLevels.map((lv) => (
+                                        <div key={lv.label} className={styles.recommenderWageLevelRow}>
+                                          <span className={styles.recommenderWageLevelLabel}>{lv.label}</span>
+                                          <span className={styles.recommenderWageValue}>
+                                            {formatHourly(lv.hourly)} / hr | {formatAnnual(lv.annual)} / yr
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className={styles.recommenderWageValue}>No wage available</span>
+                                  )}
                                 </div>
                                 {item.wageHasDataQualityIssue ? (
                                   <span

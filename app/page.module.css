@@ -1013,6 +1013,24 @@
   color: var(--color-ink);
 }
 
+.recommenderWageLevels {
+  display: grid;
+  gap: 2px;
+}
+
+.recommenderWageLevelRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.recommenderWageLevelLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted-strong);
+  min-width: 24px;
+}
+
 .recommenderSelected {
   display: inline-flex;
   align-items: center;

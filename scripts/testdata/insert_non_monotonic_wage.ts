@@ -1,6 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
+
+ensurePrismaEngineStartupLogs();
+
 const prisma = new PrismaClient();
 
 function decimalToNumber(value: unknown): number | null {

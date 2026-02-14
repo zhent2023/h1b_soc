@@ -41,7 +41,7 @@ async function main() {
   const baseUrl = getBaseUrl();
   const wageYear = process.env.ACCEPT_WAGE_YEAR ?? '2025-2026';
   if (!process.env.REDIS_URL || process.env.REDIS_URL.trim().length === 0) {
-    process.env.REDIS_URL = 'redis://localhost:6379';
+    process.env.REDIS_URL = 'redis://127.0.0.1:26379';
   }
 
   await startDependencies();
@@ -80,7 +80,7 @@ async function main() {
     REDIS_URL:
       process.env.REDIS_URL && process.env.REDIS_URL.trim().length > 0
         ? process.env.REDIS_URL
-        : 'redis://localhost:6379',
+        : 'redis://127.0.0.1:26379',
   };
 
   const port = new URL(baseUrl).port || '3000';

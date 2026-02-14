@@ -1,5 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
+
+ensurePrismaEngineStartupLogs();
+
 const prisma = new PrismaClient();
 
 const WAGE_YEAR = process.env.DEFAULT_WAGE_YEAR ?? '2025-2026';

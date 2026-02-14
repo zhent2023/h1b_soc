@@ -45,7 +45,7 @@ describe('cache helpers', () => {
   });
 
   it('records a hit for valid cached JSON', async () => {
-    process.env.REDIS_URL = 'redis://localhost:6379';
+    process.env.REDIS_URL = 'redis://127.0.0.1:26379';
     redisGet.mockResolvedValue(JSON.stringify({ ok: true }));
     const { cacheGet, runWithCacheContext } = await loadCache();
 
@@ -56,7 +56,7 @@ describe('cache helpers', () => {
   });
 
   it('records a miss for invalid cached JSON', async () => {
-    process.env.REDIS_URL = 'redis://localhost:6379';
+    process.env.REDIS_URL = 'redis://127.0.0.1:26379';
     redisGet.mockResolvedValue('not-json');
     const { cacheGet, runWithCacheContext } = await loadCache();
 
@@ -67,7 +67,7 @@ describe('cache helpers', () => {
   });
 
   it('records a miss when redis key is empty', async () => {
-    process.env.REDIS_URL = 'redis://localhost:6379';
+    process.env.REDIS_URL = 'redis://127.0.0.1:26379';
     redisGet.mockResolvedValue(null);
     const { cacheGet, runWithCacheContext } = await loadCache();
 
@@ -78,7 +78,7 @@ describe('cache helpers', () => {
   });
 
   it('sets cached values with ttl when redis is enabled', async () => {
-    process.env.REDIS_URL = 'redis://localhost:6379';
+    process.env.REDIS_URL = 'redis://127.0.0.1:26379';
     const { cacheSet } = await loadCache();
 
     await cacheSet('key', { answer: 42 }, 90);

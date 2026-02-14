@@ -1,7 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import { lookup, LookupError } from '../../src/lib/lookup';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 
@@ -90,7 +93,49 @@ describe('lookup integration', () => {
     onetVersionId = onetVersion.id;
     oflcVersionId = oflcVersion.id;
 
-    onet8WithDuties = await findOnet8WithDuties();
+    const preferredSoc6 = '15-1252';
+    const preferredOnet8Row = await prisma.onetDuty.findFirst({
+      where: { datasetVersionId: onetVersionId, onetCode: { startsWith: `${preferredSoc6}.` } },
+      select: { onetCode: true },
+      orderBy: { onetCode: 'asc' },
+    });
+
+    let preferredOnet8: string | undefined;
+    if (preferredOnet8Row?.onetCode) {
+      const socExists = await prisma.socTitle.findFirst({
+        where: { datasetVersionId: oflcVersionId, socCode: preferredSoc6 },
+        select: { socCode: true },
+      });
+
+      if (socExists) {
+        // This suite assumes wage context exists for areaCode=14460 and at least 8 wage rows
+        // (enough to produce 8 lowest + 8 highest for soc_extremes).
+        const wageCount = await prisma.wageRate.count({
+          where: {
+            datasetVersionId: oflcVersionId,
+            wageYear: defaultWageYear,
+            isAcwia: defaultIsAcwia,
+            socCode: preferredSoc6,
+          },
+        });
+        const hasAreaWage = await prisma.wageRate.findFirst({
+          where: {
+            datasetVersionId: oflcVersionId,
+            wageYear: defaultWageYear,
+            isAcwia: defaultIsAcwia,
+            areaCode: '14460',
+            socCode: preferredSoc6,
+          },
+          select: { socCode: true },
+        });
+
+        if (wageCount >= 8 && hasAreaWage) {
+          preferredOnet8 = preferredOnet8Row.onetCode;
+        }
+      }
+    }
+
+    onet8WithDuties = preferredOnet8 ?? (await findOnet8WithDuties());
     if (!onet8WithDuties) {
       throw new Error('No O*NET 8-digit duties found with at least 8 wage rows.');
     }

@@ -3,8 +3,11 @@ import path from 'path';
 
 import { PrismaClient } from '@prisma/client';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import { downloadToCache } from './lib/download';
 import { getField, parseCsvStream } from './utils';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 

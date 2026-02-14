@@ -4,9 +4,12 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { POST } from '../../app/api/v1/transcripts/[id]/compute-ska/route';
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
 import { createStubProvider } from '../../src/lib/embeddings/providerStub';
 import { toVectorLiteral } from '../../src/lib/embeddings/vectorUtils';
 import { createSessionToken, hashSessionToken } from '../../src/lib/session';
+
+ensurePrismaEngineStartupLogs();
 
 const prisma = new PrismaClient();
 

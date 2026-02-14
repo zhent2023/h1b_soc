@@ -1,5 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 
+import { ensurePrismaEngineStartupLogs } from '../../src/db/prismaEnv';
+
+ensurePrismaEngineStartupLogs();
+
 const prisma = new PrismaClient();
 
 function getArgValue(flag: string): string | undefined {
