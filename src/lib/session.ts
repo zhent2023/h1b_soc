@@ -21,9 +21,19 @@ export function shouldUseSecureSessionCookie(req: Request): boolean {
 
   if (process.env.NODE_ENV !== 'production') return false;
 
-  // In production, require HTTPS cookies everywhere except localhost,
-  // so CI smoke tests against http://127.0.0.1 can still authenticate.
-  if (isLocalhostHost(req.headers.get('host'))) return false;
+  // In production, require HTTPS cookies everywhere except localhost, so CI smoke
+  // tests against http://127.0.0.1 can still authenticate.
+  const hostHeader = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+  if (isLocalhostHost(hostHeader)) return false;
+
+  // Some runtimes may not provide a Host header in the Fetch Request wrapper.
+  // Fall back to parsing req.url so localhost requests still work.
+  try {
+    const url = new URL(req.url);
+    if (isLocalhostHost(url.host)) return false;
+  } catch {
+    // ignore
+  }
 
   return true;
 }
