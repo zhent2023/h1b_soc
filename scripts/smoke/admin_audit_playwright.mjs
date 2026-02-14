@@ -1,4 +1,6 @@
-import { chromium } from 'playwright';
+// We depend on `@playwright/test` (not `playwright`) in this repo.
+// Importing from `@playwright/test` keeps CI/lightweight installs working.
+import { chromium } from '@playwright/test';
 
 const port = process.env.ADMIN_AUDIT_PORT || '3102';
 const baseUrl =
